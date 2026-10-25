@@ -1,9 +1,20 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- SPDX-FileCopyrightText: 2026 LibreCode Coop and contributors -->
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
-<phpunit cacheResult="false" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" bootstrap="src/bootstrap.php" colors="true" failOnWarning="true" failOnRisky="true" xsi:noNamespaceSchemaLocation="https://schema.phpunit.de/12.4/phpunit.xsd">
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="https://schema.phpunit.de/13.4/phpunit.xsd"
+         bootstrap="src/bootstrap.php"
+         colors="true"
+         recordTestRunHistory="false"
+         failOnEmptyTestSuite="true"
+         failOnDeprecation="true"
+         failOnPhpunitDeprecation="true"
+         failOnNotice="true"
+         failOnWarning="true"
+         failOnRisky="true"
+         displayDetailsOnPhpunitDeprecations="true">
     <testsuites>
-        <testsuite name="Akaunting MCP contracts">
+        <testsuite name="Akaunting MCP behavior">
             <directory>tests/phpunit</directory>
         </testsuite>
     </testsuites>
