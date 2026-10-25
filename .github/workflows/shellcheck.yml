@@ -1,0 +1,32 @@
+# SPDX-FileCopyrightText: 2026 LibreCode Coop and contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
+name: ShellCheck
+on: [push, pull_request]
+permissions:
+  contents: read
+concurrency:
+  group: shellcheck-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  shellcheck:
+    name: Shell script quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check shell scripts
+        run: |
+          docker run --rm --network none \
+            -v "$PWD:/app:ro" -w /app \
+            koalaman/shellcheck:v0.11.0@sha256:61862eba1fcf09a484ebcc6feea46f1782532571a34ed51fedf90dd25f925a8d \
+            --severity=warning \
+            bin/save-runtime-key.sh \
+            tests/run_perf_connection.sh \
+            tests/integration/http-smoke.sh \
+            tests/integration/docker-smoke.sh \
+            docker/tunnel/wait-for-mcp.sh \
+            tools/check-actionlint.sh \
+            tools/check-commits.sh

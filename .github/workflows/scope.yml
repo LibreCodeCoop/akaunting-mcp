@@ -1,0 +1,27 @@
+# SPDX-FileCopyrightText: 2026 LibreCode Coop and contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
+name: Public Scope
+on: [push, pull_request]
+permissions:
+  contents: read
+concurrency:
+  group: public-scope-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  scope:
+    name: Public source and metadata boundaries
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # v2.40.0
+        with:
+          php-version: '8.5'
+          coverage: none
+      - name: Validate scope checker
+        run: php tools/check-release-scope.php --self-test
+      - name: Validate staged source and documentation
+        run: php tools/check-release-scope.php

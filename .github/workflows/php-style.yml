@@ -1,0 +1,31 @@
+# SPDX-FileCopyrightText: 2026 LibreCode Coop and contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
+name: PHP CS
+on: [push, pull_request]
+permissions:
+  contents: read
+concurrency:
+  group: php-cs-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  php-style:
+    name: PHP-CS-Fixer
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # v2.40.0
+        with:
+          php-version: '8.5'
+          extensions: curl, sodium, mbstring, xml, dom
+          tools: composer:v2
+          coverage: none
+      - name: Install locked development dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress --no-scripts
+      - name: Install isolated php-cs-fixer toolchain
+        run: composer bin php-cs-fixer install --no-interaction --prefer-dist --no-progress --no-scripts
+      - name: Check source formatting
+        run: composer cs:check

@@ -1,0 +1,12 @@
+# SPDX-FileCopyrightText: 2026 LibreCode Coop and contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
+parameters:
+    level: 5
+    paths:
+        - src
+        - public
+        - bin
+        - tools
+        - tests/integration/check-docker-smoke.php
+    excludePaths:
+        - src/api-routes.json

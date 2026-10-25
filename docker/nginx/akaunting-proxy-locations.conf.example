@@ -1,0 +1,77 @@
+# SPDX-FileCopyrightText: 2026 LibreCode Coop and contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# Template only: replace accounting.example.org with your deployment host.
+# Install as the corresponding nginx-proxy vhost.d configuration after review.
+# Exact-match OAuth endpoints only; never expose the internal /mcp endpoint.
+# Disable access logging: login bodies and OAuth codes must remain private.
+
+location = /.well-known/oauth-authorization-server/akaunting-mcp-auth {
+    access_log off;
+    limit_except GET { deny all; }
+    resolver 127.0.0.11 ipv6=off valid=30s;
+    set $akaunting_mcp_oauth_upstream "http://akaunting-mcp-oauth-edge:8081";
+    proxy_pass $akaunting_mcp_oauth_upstream$request_uri;
+    proxy_http_version 1.1;
+    proxy_set_header Host accounting.example.org;
+    proxy_set_header X-Forwarded-Proto https;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header Connection "";
+    proxy_connect_timeout 4s;
+    proxy_read_timeout 15s;
+    proxy_redirect off;
+}
+
+location = /akaunting-mcp-auth/authorize {
+    access_log off;
+    limit_except GET { deny all; }
+    resolver 127.0.0.11 ipv6=off valid=30s;
+    set $akaunting_mcp_oauth_upstream "http://akaunting-mcp-oauth-edge:8081";
+    proxy_pass $akaunting_mcp_oauth_upstream$request_uri;
+    proxy_http_version 1.1;
+    proxy_set_header Host accounting.example.org;
+    proxy_set_header X-Forwarded-Proto https;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header Connection "";
+    proxy_connect_timeout 4s;
+    proxy_read_timeout 15s;
+    proxy_redirect off;
+}
+
+location = /akaunting-mcp-auth/login {
+    access_log off;
+    limit_except POST { deny all; }
+    client_max_body_size 8k;
+    resolver 127.0.0.11 ipv6=off valid=30s;
+    set $akaunting_mcp_oauth_upstream "http://akaunting-mcp-oauth-edge:8081";
+    proxy_pass $akaunting_mcp_oauth_upstream$request_uri;
+    proxy_http_version 1.1;
+    proxy_set_header Host accounting.example.org;
+    proxy_set_header X-Forwarded-Proto https;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header Connection "";
+    proxy_connect_timeout 4s;
+    proxy_read_timeout 15s;
+    proxy_redirect off;
+}
+
+location = /akaunting-mcp-auth/token {
+    access_log off;
+    limit_except POST { deny all; }
+    client_max_body_size 8k;
+    resolver 127.0.0.11 ipv6=off valid=30s;
+    set $akaunting_mcp_oauth_upstream "http://akaunting-mcp-oauth-edge:8081";
+    proxy_pass $akaunting_mcp_oauth_upstream$request_uri;
+    proxy_http_version 1.1;
+    proxy_set_header Host accounting.example.org;
+    proxy_set_header X-Forwarded-Proto https;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header Connection "";
+    proxy_connect_timeout 4s;
+    proxy_read_timeout 15s;
+    proxy_redirect off;
+}

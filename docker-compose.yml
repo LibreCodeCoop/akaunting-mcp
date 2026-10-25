@@ -1,0 +1,106 @@
+# SPDX-FileCopyrightText: 2026 LibreCode Coop and contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    environment:
+      APP_ENV: production
+      AKAUNTING_BASE_URL: ${AKAUNTING_BASE_URL:?Set Akaunting origin}
+      MCP_OAUTH_ISSUER: ${MCP_OAUTH_ISSUER:?Set OAuth issuer}
+      MCP_OAUTH_CLIENT_ID: ${MCP_OAUTH_CLIENT_ID:?Register OAuth client}
+      MCP_OAUTH_REDIRECT_URI: ${MCP_OAUTH_REDIRECT_URI:?Set exact ChatGPT callback URI}
+      MCP_RESOURCE_URI: ${MCP_RESOURCE_URI:?Set the OpenAI resource URI}
+      OPENAI_TUNNEL_ID: ${OPENAI_TUNNEL_ID:?Set registered Secure MCP Tunnel ID}
+      MCP_TOKEN_ENCRYPTION_KEY_FILE: /run/secrets/mcp_token_key
+      MCP_DATA_DIR: /app/var
+      MCP_ALLOWED_HOSTS: ${MCP_ALLOWED_HOSTS:-nginx,127.0.0.1,localhost}
+      MCP_ALLOW_SEPARATE_ISSUER_HOST: ${MCP_ALLOW_SEPARATE_ISSUER_HOST:-false}
+    secrets: [mcp_token_key]
+    volumes:
+      - mcp_state:/app/var
+    networks: [backend]
+    read_only: true
+    tmpfs: ['/tmp:rw,noexec,nosuid,size=16m']
+    cap_drop: [ALL]
+    security_opt: ['no-new-privileges:true']
+    pids_limit: 128
+    mem_limit: 256m
+
+  nginx:
+    image: nginx:1.30.6-alpine3.24@sha256:47928bf67eb62a1863cb08d9ecb52d3e704304ba614eaee17884204677702951
+    user: "101:101"
+    restart: unless-stopped
+    depends_on: [app]
+    volumes:
+      - ./docker/nginx/mcp.conf:/etc/nginx/conf.d/default.conf:ro
+    networks: [backend]
+    read_only: true
+    tmpfs: ['/var/run:rw,nosuid,uid=101,gid=101,mode=0755,size=4m', '/var/cache/nginx:rw,nosuid,uid=101,gid=101,mode=0755,size=16m', '/tmp:rw,noexec,nosuid,size=8m']
+    cap_drop: [ALL]
+    security_opt: ['no-new-privileges:true']
+
+  # Expose only issuer-specific routes through the EXISTING reverse proxy.
+  oauth-edge:
+    profiles: ['oauth-edge']
+    image: nginx:1.30.6-alpine3.24@sha256:47928bf67eb62a1863cb08d9ecb52d3e704304ba614eaee17884204677702951
+    user: "101:101"
+    restart: unless-stopped
+    depends_on: [app]
+    volumes:
+      - ./docker/nginx/oauth.conf:/etc/nginx/conf.d/default.conf:ro
+    networks:
+      backend:
+      existing_proxy:
+        aliases: ["${MCP_OAUTH_EDGE_ALIAS:-akaunting-mcp-oauth-edge}"]
+    read_only: true
+    tmpfs: ['/var/run:rw,nosuid,uid=101,gid=101,mode=0755,size=4m', '/var/cache/nginx:rw,nosuid,uid=101,gid=101,mode=0755,size=16m', '/tmp:rw,noexec,nosuid,size=8m']
+    cap_drop: [ALL]
+    security_opt: ['no-new-privileges:true']
+
+  tunnel:
+    profiles: ['chatgpt']
+    image: ghcr.io/openai/tunnel-client:0.0.18@sha256:486321616c197fed2d3fbe7d44f22433ce9a1e6c1ee434c0d6652868a5fda5c1
+    user: '${APP_UID:-1000}:${APP_GID:-1000}'
+    restart: unless-stopped
+    # Use a separate network namespace: tunnel-client listens on its own
+    # loopback health port 8080, which must not collide with MCP Nginx.
+    networks: [backend]
+    depends_on: [nginx]
+    # Docker restart-on-boot does not wait for Compose dependencies. Wait for
+    # DNS, Nginx and PHP metadata before the one-shot tunnel startup discovery.
+    volumes:
+      - ./docker/tunnel/wait-for-mcp.sh:/usr/local/bin/wait-for-mcp.sh:ro
+    entrypoint: ["/bin/sh", "/usr/local/bin/wait-for-mcp.sh"]
+    command:
+      - --control-plane.api-key=file:/run/secrets/openai_tunnel_runtime_api_key
+    environment:
+      CONTROL_PLANE_TUNNEL_ID: ${OPENAI_TUNNEL_ID:?Set Tunnel ID}
+      MCP_SERVER_URL: http://nginx:8080/mcp
+      MCP_OAUTH_TRUSTED_ORIGINS: |-
+        ${MCP_OAUTH_ORIGIN:?Set issuer HTTPS origin}
+        https://api.openai.com
+      HARPOON_ALLOW_PLAINTEXT_HTTP: 'true'
+      CONTROL_PLANE_MAX_INFLIGHT_REQUESTS: '1'
+      MCP_DEPENDENCY_WAIT_SECONDS: '120'
+      MCP_STARTUP_WAIT_TIMEOUT: '60s'
+    secrets: [openai_tunnel_runtime_api_key]
+    read_only: true
+    tmpfs: ['/tmp:rw,noexec,nosuid,size=32m']
+    cap_drop: [ALL]
+    security_opt: ['no-new-privileges:true']
+
+volumes:
+  mcp_state:
+
+secrets:
+  mcp_token_key:
+    file: ./secrets/mcp_token_key
+  openai_tunnel_runtime_api_key:
+    file: ./secrets/openai_tunnel_runtime_api_key
+networks:
+  backend:
+    driver: bridge
+  existing_proxy:
+    external: true
+    name: ${MCP_PROXY_NETWORK:-reverse-proxy}

@@ -1,0 +1,352 @@
+{
+  "version": 1,
+  "source": "registered_akaunting_api_routes",
+  "routes": [
+    {
+      "name": "api.accounts.index",
+      "uri": "api/accounts",
+      "params": [],
+      "module": false,
+      "permissions": []
+    },
+    {
+      "name": "api.accounts.show",
+      "uri": "api/accounts/{account}",
+      "params": [
+        "account"
+      ],
+      "module": false,
+      "permissions": []
+    },
+    {
+      "name": "api.categories.index",
+      "uri": "api/categories",
+      "params": [],
+      "module": false,
+      "permissions": []
+    },
+    {
+      "name": "api.categories.show",
+      "uri": "api/categories/{category}",
+      "params": [
+        "category"
+      ],
+      "module": false,
+      "permissions": []
+    },
+    {
+      "name": "api.companies.index",
+      "uri": "api/companies",
+      "params": [],
+      "module": false,
+      "permissions": []
+    },
+    {
+      "name": "api.companies.show",
+      "uri": "api/companies/{company}",
+      "params": [
+        "company"
+      ],
+      "module": false,
+      "permissions": []
+    },
+    {
+      "name": "api.contacts.index",
+      "uri": "api/contacts",
+      "params": [],
+      "module": false,
+      "permissions": []
+    },
+    {
+      "name": "api.contacts.show",
+      "uri": "api/contacts/{contact}",
+      "params": [
+        "contact"
+      ],
+      "module": false,
+      "permissions": []
+    },
+    {
+      "name": "api.currencies.index",
+      "uri": "api/currencies",
+      "params": [],
+      "module": false,
+      "permissions": []
+    },
+    {
+      "name": "api.currencies.show",
+      "uri": "api/currencies/{currency}",
+      "params": [
+        "currency"
+      ],
+      "module": false,
+      "permissions": []
+    },
+    {
+      "name": "api.dashboards.index",
+      "uri": "api/dashboards",
+      "params": [],
+      "module": false,
+      "permissions": []
+    },
+    {
+      "name": "api.dashboards.show",
+      "uri": "api/dashboards/{dashboard}",
+      "params": [
+        "dashboard"
+      ],
+      "module": false,
+      "permissions": []
+    },
+    {
+      "name": "api.departments.index",
+      "uri": "api/departments",
+      "params": [],
+      "module": true,
+      "permissions": [
+        "read-employees-departments"
+      ]
+    },
+    {
+      "name": "api.departments.show",
+      "uri": "api/departments/{department}",
+      "params": [
+        "department"
+      ],
+      "module": true,
+      "permissions": [
+        "read-employees-departments"
+      ]
+    },
+    {
+      "name": "api.dismissals.index",
+      "uri": "api/dismissals",
+      "params": [],
+      "module": true,
+      "permissions": [
+        "read-employees-dismissals"
+      ]
+    },
+    {
+      "name": "api.dismissals.show",
+      "uri": "api/dismissals/{dismissal}",
+      "params": [
+        "dismissal"
+      ],
+      "module": true,
+      "permissions": [
+        "read-employees-dismissals"
+      ]
+    },
+    {
+      "name": "api.documents.index",
+      "uri": "api/documents",
+      "params": [],
+      "module": false,
+      "permissions": []
+    },
+    {
+      "name": "api.documents.show",
+      "uri": "api/documents/{document}",
+      "params": [
+        "document"
+      ],
+      "module": false,
+      "permissions": []
+    },
+    {
+      "name": "api.documents.transactions.index",
+      "uri": "api/documents/{document}/transactions",
+      "params": [
+        "document"
+      ],
+      "module": false,
+      "permissions": [
+        "read-banking-transactions"
+      ]
+    },
+    {
+      "name": "api.documents.transactions.show",
+      "uri": "api/documents/{document}/transactions/{transaction}",
+      "params": [
+        "document",
+        "transaction"
+      ],
+      "module": false,
+      "permissions": [
+        "read-banking-transactions"
+      ]
+    },
+    {
+      "name": "api.employees.index",
+      "uri": "api/employees",
+      "params": [],
+      "module": true,
+      "permissions": [
+        "read-employees-employees"
+      ]
+    },
+    {
+      "name": "api.employees.show",
+      "uri": "api/employees/{employee}",
+      "params": [
+        "employee"
+      ],
+      "module": true,
+      "permissions": [
+        "read-employees-employees"
+      ]
+    },
+    {
+      "name": "api.items.index",
+      "uri": "api/items",
+      "params": [],
+      "module": false,
+      "permissions": []
+    },
+    {
+      "name": "api.items.show",
+      "uri": "api/items/{item}",
+      "params": [
+        "item"
+      ],
+      "module": false,
+      "permissions": []
+    },
+    {
+      "name": "api.reconciliations.index",
+      "uri": "api/reconciliations",
+      "params": [],
+      "module": false,
+      "permissions": []
+    },
+    {
+      "name": "api.reconciliations.show",
+      "uri": "api/reconciliations/{reconciliation}",
+      "params": [
+        "reconciliation"
+      ],
+      "module": false,
+      "permissions": []
+    },
+    {
+      "name": "api.reports.index",
+      "uri": "api/reports",
+      "params": [],
+      "module": false,
+      "permissions": []
+    },
+    {
+      "name": "api.reports.show",
+      "uri": "api/reports/{report}",
+      "params": [
+        "report"
+      ],
+      "module": false,
+      "permissions": []
+    },
+    {
+      "name": "api.settings.index",
+      "uri": "api/settings",
+      "params": [],
+      "module": false,
+      "permissions": [
+        "read-settings-company|read-settings-defaults|read-settings-localisation"
+      ]
+    },
+    {
+      "name": "api.settings.show",
+      "uri": "api/settings/{setting}",
+      "params": [
+        "setting"
+      ],
+      "module": false,
+      "permissions": [
+        "read-settings-company|read-settings-defaults|read-settings-localisation"
+      ]
+    },
+    {
+      "name": "api.taxes.index",
+      "uri": "api/taxes",
+      "params": [],
+      "module": false,
+      "permissions": []
+    },
+    {
+      "name": "api.taxes.show",
+      "uri": "api/taxes/{tax}",
+      "params": [
+        "tax"
+      ],
+      "module": false,
+      "permissions": []
+    },
+    {
+      "name": "api.transactions.index",
+      "uri": "api/transactions",
+      "params": [],
+      "module": false,
+      "permissions": []
+    },
+    {
+      "name": "api.transactions.show",
+      "uri": "api/transactions/{transaction}",
+      "params": [
+        "transaction"
+      ],
+      "module": false,
+      "permissions": []
+    },
+    {
+      "name": "api.transfers.index",
+      "uri": "api/transfers",
+      "params": [],
+      "module": false,
+      "permissions": []
+    },
+    {
+      "name": "api.transfers.show",
+      "uri": "api/transfers/{transfer}",
+      "params": [
+        "transfer"
+      ],
+      "module": false,
+      "permissions": []
+    },
+    {
+      "name": "api.translations.all",
+      "uri": "api/translations/{locale}/all",
+      "params": [
+        "locale"
+      ],
+      "module": false,
+      "permissions": []
+    },
+    {
+      "name": "api.translations.file",
+      "uri": "api/translations/{locale}/{file}",
+      "params": [
+        "locale",
+        "file"
+      ],
+      "module": false,
+      "permissions": []
+    },
+    {
+      "name": "api.users.index",
+      "uri": "api/users",
+      "params": [],
+      "module": false,
+      "permissions": []
+    },
+    {
+      "name": "api.users.show",
+      "uri": "api/users/{user}",
+      "params": [
+        "user"
+      ],
+      "module": false,
+      "permissions": []
+    }
+  ]
+}

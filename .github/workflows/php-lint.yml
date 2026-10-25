@@ -1,0 +1,27 @@
+# SPDX-FileCopyrightText: 2026 LibreCode Coop and contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
+name: PHP Lint
+on: [push, pull_request]
+permissions:
+  contents: read
+concurrency:
+  group: php-lint-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  php-lint:
+    name: PHP 8.5 syntax
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # v2.40.0
+        with:
+          php-version: '8.5'
+          extensions: curl, sodium, mbstring, xml, dom
+          tools: composer:v2
+          coverage: none
+      - name: Lint PHP source and tests
+        run: composer lint

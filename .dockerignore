@@ -1,0 +1,15 @@
+# SPDX-FileCopyrightText: 2026 LibreCode Coop and contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
+# Strict allowlist: Dockerfile only consumes executable source.
+# In particular, .github, docs, secrets, state and local files never enter
+# the build context, regardless of whether they are tracked or Git-ignored.
+**
+!Dockerfile
+!src/
+!src/**
+!public/
+!public/mcp.php
+!public/oauth.php
+!bin/
+!bin/revoke-user.php

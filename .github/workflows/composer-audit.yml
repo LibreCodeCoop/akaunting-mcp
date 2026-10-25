@@ -1,0 +1,33 @@
+# SPDX-FileCopyrightText: 2026 LibreCode Coop and contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
+name: Composer Audit
+on: [push, pull_request]
+permissions:
+  contents: read
+concurrency:
+  group: composer-audit-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    name: Validate manifest, lock and security advisories
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # v2.40.0
+        with:
+          php-version: '8.5'
+          extensions: curl, sodium, mbstring, xml, dom
+          tools: composer:v2
+          coverage: none
+      - name: Validate Composer metadata
+        run: composer validate --strict
+      - name: Install the root Composer bin plugin
+        run: composer install --no-interaction --prefer-dist --no-progress --no-scripts
+      - name: Audit root lockfile
+        run: composer audit --locked --no-interaction
+      - name: Audit each isolated tool lockfile
+        run: composer bin all audit --locked --no-interaction

@@ -1,0 +1,15 @@
+{
+    "name": "librecode/akaunting-mcp-phpunit",
+    "description": "Isolated PHPUnit test runner",
+    "type": "project",
+    "license": "AGPL-3.0-or-later",
+    "require-dev": {
+        "phpunit/phpunit": "^12.4"
+    },
+    "config": {
+        "sort-packages": true,
+        "platform": {
+            "php": "8.5.0"
+        }
+    }
+}

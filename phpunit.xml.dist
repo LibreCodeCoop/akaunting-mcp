@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-FileCopyrightText: 2026 LibreCode Coop and contributors -->
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<phpunit cacheResult="false" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" bootstrap="src/bootstrap.php" colors="true" failOnWarning="true" failOnRisky="true" xsi:noNamespaceSchemaLocation="https://schema.phpunit.de/12.4/phpunit.xsd">
+    <testsuites>
+        <testsuite name="Akaunting MCP contracts">
+            <directory>tests/phpunit</directory>
+        </testsuite>
+    </testsuites>
+</phpunit>

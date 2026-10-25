@@ -1,0 +1,37 @@
+# SPDX-FileCopyrightText: 2026 LibreCode Coop and contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
+name: Docker Smoke
+on: [push, pull_request]
+permissions:
+  contents: read
+concurrency:
+  group: docker-smoke-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  smoke:
+    name: Synthetic MCP, OAuth and private Compose topology
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build reviewed runtime image
+        run: docker build --pull --tag akaunting-mcp:ci .
+      - name: Synthetic tool and authorization regressions
+        run: |
+          docker run --rm --network none \
+            -v "$PWD/tests:/app/tests:ro" -w /app \
+            --entrypoint php akaunting-mcp:ci tests/run.php
+      - name: HTTP transport and OAuth smoke (loopback fixtures)
+        run: |
+          docker run --rm --network none \
+            -v "$PWD/tests:/app/tests:ro" -w /app \
+            --entrypoint sh akaunting-mcp:ci tests/integration/http-smoke.sh
+      - name: Synthetic connection efficiency and failure handling
+        run: |
+          docker run --rm --network none \
+            -v "$PWD/tests:/app/tests:ro" -w /app \
+            --entrypoint sh akaunting-mcp:ci tests/run_perf_connection.sh
+      - name: Compose private networking and minimal OAuth edge
+        run: bash tests/integration/docker-smoke.sh

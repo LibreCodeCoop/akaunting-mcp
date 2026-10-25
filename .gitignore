@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: 2026 LibreCode Coop and contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
+# Local configuration and persistent service state
+.env
+.env.*
+!.env.example
+secrets/
+var/
+
+# Dependencies, caches, test and build outputs
+vendor/
+node_modules/
+.phpunit.result.cache
+.php-cs-fixer.cache
+.build/
+dist/
+coverage/
+*.log
+*.sqlite
+*.db
+*.sql
+*.dump
+*.bak
+*.backup
+*.swp
+.DS_Store
+
+# Infrastructure-specific operational records belong outside this checkout.
+# Do not hide deployment runbooks here: the scope checker must reject them.

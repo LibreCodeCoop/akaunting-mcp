@@ -1,0 +1,52 @@
+{
+    "name": "librecode/akaunting-mcp",
+    "description": "Read-only OAuth-secured Akaunting MCP server",
+    "type": "project",
+    "license": "AGPL-3.0-or-later",
+    "require": {
+        "php": "^8.5",
+        "ext-curl": "*",
+        "ext-json": "*",
+        "ext-sodium": "*"
+    },
+    "require-dev": {
+        "bamarni/composer-bin-plugin": "^1.9.1"
+    },
+    "autoload": {
+        "psr-4": {
+            "AkauntingMcp\\": "src/"
+        }
+    },
+    "scripts": {
+        "lint": "find src public bin tests tools -name \"*.php\" -exec php -l {} \\;",
+        "test": "vendor-bin/phpunit/vendor/bin/phpunit -c phpunit.xml.dist --no-progress",
+        "analyse": "vendor-bin/phpstan/vendor/bin/phpstan analyse -c phpstan.neon.dist --no-progress --memory-limit=1G",
+        "cs:check": "vendor-bin/php-cs-fixer/vendor/bin/php-cs-fixer fix --dry-run --diff --using-cache=no --config=.php-cs-fixer.dist.php",
+        "check": [
+            "@lint",
+            "@cs:check",
+            "@analyse",
+            "@test"
+        ],
+        "cs:fix": "vendor-bin/php-cs-fixer/vendor/bin/php-cs-fixer fix --using-cache=no --config=.php-cs-fixer.dist.php"
+    },
+    "config": {
+        "sort-packages": true,
+        "platform": {
+            "php": "8.5.0"
+        },
+        "audit": {
+            "block-insecure": true
+        },
+        "allow-plugins": {
+            "bamarni/composer-bin-plugin": true
+        }
+    },
+    "extra": {
+        "bamarni-bin": {
+            "bin-links": false,
+            "target-directory": "vendor-bin",
+            "forward-command": false
+        }
+    }
+}

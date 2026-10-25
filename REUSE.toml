@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: 2026 LibreCode Coop and contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
+version = 1
+SPDX-PackageName = "akaunting-mcp"
+SPDX-PackageSupplier = "LibreCode Coop"
+
+# REUSE automatically checks all non-ignored project files recursively.
+# Only strictly valid JSON needs external metadata: JSON does not support comments.
+# All commentable code, configuration, workflow and documentation files must
+# carry their own SPDX headers instead of inheriting blanket annotations.
+[[annotations]]
+path = [
+    "composer.json",
+    "composer.lock",
+    "src/api-routes.json",
+    "vendor-bin/phpunit/composer.json",
+    "vendor-bin/phpunit/composer.lock",
+    "vendor-bin/phpstan/composer.json",
+    "vendor-bin/phpstan/composer.lock",
+    "vendor-bin/php-cs-fixer/composer.json",
+    "vendor-bin/php-cs-fixer/composer.lock",
+]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 LibreCode Coop and contributors"
+SPDX-License-Identifier = "AGPL-3.0-or-later"
