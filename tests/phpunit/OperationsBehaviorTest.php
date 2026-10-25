@@ -283,6 +283,46 @@ SH
         self::assertSame(2,$corrupt);
     }
 
+    public function testDependabotDcoUsesOnlyItsOfficialIdentityAlias(): void
+    {
+        $repo = $this->sandbox.'/dependabot-dco';
+        mkdir($repo, 0700);
+        [$init] = $this->command(['git', 'init', '-q', $repo]);
+        self::assertSame(0, $init);
+        $git = fn(string $name, string $email, array $args): array => $this->command([
+            'git', '-c', 'user.name='.$name, '-c', 'user.email='.$email,
+            '-c', 'commit.gpgsign=false', ...$args,
+        ], $repo);
+
+        [$start] = $git('Synthetic Dev', 'dev@example.invalid', [
+            'commit', '--allow-empty', '-m', 'chore: baseline',
+            '-m', 'Signed-off-by: Synthetic Dev <dev@example.invalid>',
+        ]);
+        self::assertSame(0, $start);
+        [$baseStatus, $base] = $git('Synthetic Dev', 'dev@example.invalid', ['rev-parse', 'HEAD']);
+        self::assertSame(0, $baseStatus);
+
+        [$botCommit] = $git('dependabot[bot]', '49699333+dependabot[bot]@users.noreply.github.com', [
+            'commit', '--allow-empty', '-m', 'build(deps-dev): update test runner',
+            '-m', 'Signed-off-by: dependabot[bot] <support@github.com>',
+        ]);
+        self::assertSame(0, $botCommit);
+        [$valid] = $this->command([
+            'sh', self::PROJECT.'/tools/check-commits.sh', '--dco', trim($base), 'HEAD',
+        ], $repo);
+        self::assertSame(0, $valid, 'Official Dependabot identity and trailer must be accepted');
+
+        [$impersonator] = $git('dependabot[bot]', 'impostor@example.invalid', [
+            'commit', '--allow-empty', '-m', 'build(deps-dev): unsafe identity',
+            '-m', 'Signed-off-by: dependabot[bot] <support@github.com>',
+        ]);
+        self::assertSame(0, $impersonator);
+        [$invalid] = $this->command([
+            'sh', self::PROJECT.'/tools/check-commits.sh', '--dco', trim($base), 'HEAD',
+        ], $repo);
+        self::assertNotSame(0, $invalid, 'A forged bot identity must not bypass DCO');
+    }
+
     public function testDcoAndCommitTitlesAreValidatedIndependently(): void
     {
         $repo = $this->sandbox.'/repository';
