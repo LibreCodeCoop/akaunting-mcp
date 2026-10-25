@@ -23,7 +23,15 @@ for commit in $(git rev-list --no-merges "$base..$3"); do
       printf 'Commit does not follow Conventional Commits: %s\n' "$commit" >&2
       failed=1
     fi
-  elif ! printf '%s\n' "$message" | grep -Fxq "Signed-off-by: $author"; then
+  elif printf '%s\n' "$message" | grep -Fxq "Signed-off-by: $author"; then
+    :
+  elif [ "$author" = 'dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>' ] &&
+       printf '%s\n' "$message" | grep -Fxq 'Signed-off-by: dependabot[bot] <support@github.com>'; then
+    # GitHub Dependabot uses its official support address for the DCO trailer,
+    # while Git records its noreply author address. Do not exempt human commits
+    # or arbitrary bot identities from signing off.
+    :
+  else
     printf 'Commit is missing matching DCO Signed-off-by trailer: %s\n' "$commit" >&2
     failed=1
   fi

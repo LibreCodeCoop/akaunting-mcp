@@ -24,6 +24,8 @@ composer bin all audit --locked --no-interaction
 
 Use the pinned Composer container or the corresponding workflow commands if PHP 8.5 is not available on the workstation. Only manifests and locks in each `vendor-bin/` package should be updated with `composer bin <tool> update`; do not copy one tool's vendor dependencies into another or expose these dependencies in the Docker runtime. Individual CI workflows install only the toolchain they exercise.
 
+The isolated PHPUnit toolchain uses PHPUnit 13.4 (requires PHP 8.4 or later; CI runs PHP 8.5). The `phpunit.xml.dist` schema must match the installed major version and must reject PHPUnit deprecations and an empty test suite. Treat major upgrades as deliberate compatibility work: run `composer test` with the new locked toolchain and collect PCOV coverage before merging its dependency PR. PHPUnit and other development packages are not included in the application runtime.
+
 Tests and fixtures must use synthetic users, companies and records. Never run mutating requests or use real customer financial records, administrative credentials, live identity secrets or operational database copies in CI.
 
 ## Run the synthetic suite
