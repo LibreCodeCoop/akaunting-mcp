@@ -178,13 +178,13 @@ try {
     test(hash_equals($subject,$store->subject('employee@example.invalid')), 'Token identity bound to verified personal login');
     mustFail(fn()=> $oauth->bearer('Bearer '.$issued['access_token'].'tamper'), 'JWT tampering rejected');
     $toolList = $tools->definitions();
-    test(count($toolList) === 9 && !str_contains(json_encode($toolList),'apply_change'), 'Only nine non-mutating tools exposed');
+    test(count($toolList) === 12 && !str_contains(json_encode($toolList),'execute_mutation'), 'Only human-approved mutation proposals are exposed');
     test(count(array_filter($toolList, static fn(array $t): bool =>
-        ($t['securitySchemes'] ?? null) === [['type'=>'oauth2','scopes'=>['mcp:read']]])) === 9,
+        ($t['securitySchemes'] ?? null) === [['type'=>'oauth2','scopes'=>['mcp:read']]])) === 12,
         'Every tool explicitly requires OAuth mcp:read for ChatGPT linking');
     test(count(Toolset::RESOURCES) === 16 && !in_array('users',Toolset::RESOURCES,true),'Tenant-safe REST resources declared');
     $me = $tools->call($subject,'akaunting_whoami',[]);
-    test(($me['writes_enabled'] ?? true) === false, 'Writes remain disabled');
+    test(($me['writes_enabled'] ?? false) === true && ($me['human_approval_required'] ?? false), 'Writes require separate authenticated human approval');
     $companies = $tools->call($subject,'akaunting_list_companies',['page'=>2,'limit'=>1]);
     test(($companies['data'][1]['id'] ?? null) === 3, 'User-company enumeration uses upstream authorization and pagination');
     $docs = $tools->call($subject,'akaunting_list_records',['resource'=>'documents','record_type'=>'invoice','company_id'=>3,'page'=>2,'limit'=>5,'search'=>'customer']);
@@ -306,12 +306,12 @@ try {
     $mcpRequest = fn($method,$params=[],$id=1) => $mcp->execute($subject,json_encode(['jsonrpc'=>'2.0','id'=>$id,'method'=>$method,'params'=>$params],JSON_THROW_ON_ERROR));
     $init = $mcpRequest('initialize',['protocolVersion'=>'2025-06-18']);
     test(($init['result']['serverInfo']['name'] ?? '') === 'LibreCode Akaunting MCP','MCP initializes with serverInfo');
-    test(count($mcpRequest('tools/list')['result']['tools'] ?? []) === 9, 'MCP tools/list returns read-only schema');
+    test(count($mcpRequest('tools/list')['result']['tools'] ?? []) === 12, 'MCP tools/list includes human approval proposal tools');
     $publicRequest = fn($method,$params=[]) => $mcp->execute(null,json_encode([
         'jsonrpc'=>'2.0','id'=>93,'method'=>$method,'params'=>$params],JSON_THROW_ON_ERROR));
     test(($publicRequest('initialize',['protocolVersion'=>'2025-06-18'])['result']['serverInfo']['name'] ?? '') === 'LibreCode Akaunting MCP',
         'Unauthenticated initialize may discover server without reading finance data');
-    test(count($publicRequest('tools/list')['result']['tools'] ?? []) === 9,
+    test(count($publicRequest('tools/list')['result']['tools'] ?? []) === 12,
         'Unauthenticated tools/list exposes only tool schemas');
     $previousApiCalls=count($api->calls);
     $challenge=$publicRequest('tools/call',['name'=>'akaunting_whoami','arguments'=>[]]);
