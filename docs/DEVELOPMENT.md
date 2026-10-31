@@ -4,7 +4,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 -->
 # Development, testing and contribution quality
 
-This is the permanent developer guide for the independent, read-only Akaunting MCP. Use [deployment](DEPLOY.md) for installation and operations, [architecture](ARCHITECTURE.md) for trust boundaries and [API contract](API-READ-CONTRACT.md) when changing route coverage.
+This is the permanent developer guide for the independent, approval-gated Akaunting MCP. Use [deployment](DEPLOY.md) for installation and operations, [architecture](ARCHITECTURE.md) for trust boundaries and [API contract](API-READ-CONTRACT.md) when changing route coverage.
 
 ## Requirements
 
@@ -76,7 +76,7 @@ layout or internal connection identities.
 | --- | --- |
 | OAuth authorization, PKCE, bearer audience and revocation | `AuthenticationBehaviorTest`, `tests/run.php`, `tests/integration/http-smoke.sh` |
 | Production configuration and encrypted credential state | `ConfigurationBehaviorTest`, `AuthenticationBehaviorTest`, `OperationsBehaviorTest` |
-| All nine read-only MCP tools, JSON-RPC and error redaction | `McpTransportBehaviorTest`, `tests/run.php`, `tests/integration/http-smoke.sh` |
+| All read and approval-preparation MCP tools, JSON-RPC and error redaction | `McpTransportBehaviorTest`, `tests/run.php`, `tests/integration/http-smoke.sh` |
 | Tenant isolation, native and legacy route parity, nested relationships, fields and secrets | `ReadSafetyBehaviorTest`, `SpecializedReadBehaviorTest`, `ContractsTest` |
 | REST transport, status codes, redirects, compression and bounded bodies | `tests/run_perf_connection.sh`, `tests/integration/http-smoke.sh` |
 | Key generation, revocation and private tunnel key entry | `OperationsBehaviorTest` with disposable users and filesystem |
@@ -115,7 +115,7 @@ php bin/generate-api-catalog.php routes.json > proposed-catalog.json
 
 Run the Laravel command inside the test Akaunting instance; run the generator in the MCP checkout. The inputs contain route metadata, not client business data. Review each newly proposed GET route for effects, permissions, tenant boundaries and potential secrets; do not overwrite the versioned catalog before review. Module APIs should exist for their product's own needs and other integrations, not solely to serve MCP.
 
-Keep all financial write tools disabled. Treat cached membership/ACL decisions as security-sensitive. Never weaken the upstream authorization or recursive company validation to improve response time.
+Never provide tools that directly execute or approve writes: only the authenticated browser can do so after review. Treat cached membership/ACL decisions as security-sensitive. Never weaken the upstream authorization or recursive company validation to improve response time.
 
 ## Benchmarking and performance
 

@@ -4,7 +4,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 -->
 # Install, deploy and operate Akaunting MCP
 
-This guide applies to a new installation of the independent, **read-only** MCP server. It does not install Akaunting or grant a license for Akaunting. Read [licensing](LICENSING.md), [architecture](ARCHITECTURE.md) and [security](SECURITY.md) before connecting a finance system.
+This guide applies to a new installation of the independent, human-approved MCP server. It does not install Akaunting or grant a license for Akaunting. Read [licensing](LICENSING.md), [architecture](ARCHITECTURE.md) and [security](SECURITY.md) before connecting a finance system.
 
 ## Requirements
 
@@ -76,7 +76,7 @@ If APP_UID/APP_GID differ from 10001, grant the tunnel user read access to **its
 
 The Compose oauth-edge profile connects a dedicated Nginx instance to the existing external proxy network, but it does not itself provision TLS or the host-level virtual host. Review [the example reverse-proxy locations](../docker/nginx/akaunting-proxy-locations.conf.example) and configure them for **your** hostname and the issuer path.
 
-Allow only the OAuth discovery, authorization, login and token endpoints through the public HTTPS proxy. Do **not** expose the internal MCP endpoint, local service ports, health endpoints or state files to the internet. The private tunnel must connect to the internal MCP service over its isolated Docker network.
+Allow only the OAuth discovery, authorization, login, token and independent approval (`/approve`) endpoints through the public HTTPS proxy. Do **not** expose the internal MCP endpoint, local service ports, health endpoints or state files to the internet. The private tunnel must connect to the internal MCP service over its isolated Docker network.
 
 See [connecting ChatGPT](CONNECTING-CHATGPT.md) for callback registration and client settings.
 
@@ -99,12 +99,12 @@ Use the profiles that match the chosen deployment; the base app and internal Ngi
 ## 5. Confirm behavior without financial changes
 
 - Check HTTPS OAuth metadata and PKCE browser login using an account intended for the connection.
-- Confirm the linked identity with the read-only akaunting_whoami tool and verify that writes are disabled.
+- Confirm the linked identity with the read-only akaunting_whoami tool and verify that writes require independent human approval.
 - Confirm a small authorized company-scoped read and rejection of a company/resource that a synthetic account cannot access.
 - Confirm the internal MCP endpoint is reachable only through the private tunnel.
 - Check that logs contain no passwords, OAuth codes, tokens, financial records or stack traces.
 
-Never use cloned real financial records, production mutations or administrative credentials as a shortcut for integration testing. The MCP does not provide NFS-e issuance, record modifications or permission management.
+Never use cloned real financial records, production mutations or administrative credentials as a shortcut for integration testing. Native reviewed record modifications require an authenticated, one-time browser approval per action. NFS-e actions and unrelated module endpoints remain unavailable.
 
 ## Operation, updates and rollback
 

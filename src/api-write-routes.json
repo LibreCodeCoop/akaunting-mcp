@@ -1,0 +1,705 @@
+{
+    "version": 1,
+    "source": "registered_akaunting_api_routes",
+    "routes": [
+        {
+            "name": "api.accounts.destroy",
+            "uri": "api/accounts/{account}",
+            "params": [
+                "account"
+            ],
+            "methods": [
+                "DELETE"
+            ],
+            "module": false,
+            "permissions": []
+        },
+        {
+            "name": "api.accounts.store",
+            "uri": "api/accounts",
+            "params": [],
+            "methods": [
+                "POST"
+            ],
+            "module": false,
+            "permissions": []
+        },
+        {
+            "name": "api.accounts.update",
+            "uri": "api/accounts/{account}",
+            "params": [
+                "account"
+            ],
+            "methods": [
+                "PUT",
+                "PATCH"
+            ],
+            "module": false,
+            "permissions": []
+        },
+        {
+            "name": "api.categories.destroy",
+            "uri": "api/categories/{category}",
+            "params": [
+                "category"
+            ],
+            "methods": [
+                "DELETE"
+            ],
+            "module": false,
+            "permissions": []
+        },
+        {
+            "name": "api.categories.store",
+            "uri": "api/categories",
+            "params": [],
+            "methods": [
+                "POST"
+            ],
+            "module": false,
+            "permissions": []
+        },
+        {
+            "name": "api.categories.update",
+            "uri": "api/categories/{category}",
+            "params": [
+                "category"
+            ],
+            "methods": [
+                "PUT",
+                "PATCH"
+            ],
+            "module": false,
+            "permissions": []
+        },
+        {
+            "name": "api.companies.destroy",
+            "uri": "api/companies/{company}",
+            "params": [
+                "company"
+            ],
+            "methods": [
+                "DELETE"
+            ],
+            "module": false,
+            "permissions": []
+        },
+        {
+            "name": "api.companies.store",
+            "uri": "api/companies",
+            "params": [],
+            "methods": [
+                "POST"
+            ],
+            "module": false,
+            "permissions": []
+        },
+        {
+            "name": "api.companies.update",
+            "uri": "api/companies/{company}",
+            "params": [
+                "company"
+            ],
+            "methods": [
+                "PUT",
+                "PATCH"
+            ],
+            "module": false,
+            "permissions": []
+        },
+        {
+            "name": "api.contacts.destroy",
+            "uri": "api/contacts/{contact}",
+            "params": [
+                "contact"
+            ],
+            "methods": [
+                "DELETE"
+            ],
+            "module": false,
+            "permissions": []
+        },
+        {
+            "name": "api.contacts.store",
+            "uri": "api/contacts",
+            "params": [],
+            "methods": [
+                "POST"
+            ],
+            "module": false,
+            "permissions": []
+        },
+        {
+            "name": "api.contacts.update",
+            "uri": "api/contacts/{contact}",
+            "params": [
+                "contact"
+            ],
+            "methods": [
+                "PUT",
+                "PATCH"
+            ],
+            "module": false,
+            "permissions": []
+        },
+        {
+            "name": "api.currencies.destroy",
+            "uri": "api/currencies/{currency}",
+            "params": [
+                "currency"
+            ],
+            "methods": [
+                "DELETE"
+            ],
+            "module": false,
+            "permissions": []
+        },
+        {
+            "name": "api.currencies.store",
+            "uri": "api/currencies",
+            "params": [],
+            "methods": [
+                "POST"
+            ],
+            "module": false,
+            "permissions": []
+        },
+        {
+            "name": "api.currencies.update",
+            "uri": "api/currencies/{currency}",
+            "params": [
+                "currency"
+            ],
+            "methods": [
+                "PUT",
+                "PATCH"
+            ],
+            "module": false,
+            "permissions": []
+        },
+        {
+            "name": "api.dashboards.destroy",
+            "uri": "api/dashboards/{dashboard}",
+            "params": [
+                "dashboard"
+            ],
+            "methods": [
+                "DELETE"
+            ],
+            "module": false,
+            "permissions": []
+        },
+        {
+            "name": "api.dashboards.store",
+            "uri": "api/dashboards",
+            "params": [],
+            "methods": [
+                "POST"
+            ],
+            "module": false,
+            "permissions": []
+        },
+        {
+            "name": "api.dashboards.update",
+            "uri": "api/dashboards/{dashboard}",
+            "params": [
+                "dashboard"
+            ],
+            "methods": [
+                "PUT",
+                "PATCH"
+            ],
+            "module": false,
+            "permissions": []
+        },
+        {
+            "name": "api.departments.destroy",
+            "uri": "api/departments/{department}",
+            "params": [
+                "department"
+            ],
+            "methods": [
+                "DELETE"
+            ],
+            "module": true,
+            "permissions": [
+                "delete-employees-departments"
+            ]
+        },
+        {
+            "name": "api.departments.store",
+            "uri": "api/departments",
+            "params": [],
+            "methods": [
+                "POST"
+            ],
+            "module": true,
+            "permissions": [
+                "create-employees-departments"
+            ]
+        },
+        {
+            "name": "api.departments.update",
+            "uri": "api/departments/{department}",
+            "params": [
+                "department"
+            ],
+            "methods": [
+                "PUT",
+                "PATCH"
+            ],
+            "module": true,
+            "permissions": [
+                "update-employees-departments"
+            ]
+        },
+        {
+            "name": "api.dismissals.destroy",
+            "uri": "api/dismissals/{dismissal}",
+            "params": [
+                "dismissal"
+            ],
+            "methods": [
+                "DELETE"
+            ],
+            "module": true,
+            "permissions": [
+                "delete-employees-dismissals"
+            ]
+        },
+        {
+            "name": "api.dismissals.store",
+            "uri": "api/dismissals",
+            "params": [],
+            "methods": [
+                "POST"
+            ],
+            "module": true,
+            "permissions": [
+                "create-employees-dismissals"
+            ]
+        },
+        {
+            "name": "api.dismissals.update",
+            "uri": "api/dismissals/{dismissal}",
+            "params": [
+                "dismissal"
+            ],
+            "methods": [
+                "PUT",
+                "PATCH"
+            ],
+            "module": true,
+            "permissions": [
+                "update-employees-dismissals"
+            ]
+        },
+        {
+            "name": "api.documents.destroy",
+            "uri": "api/documents/{document}",
+            "params": [
+                "document"
+            ],
+            "methods": [
+                "DELETE"
+            ],
+            "module": false,
+            "permissions": []
+        },
+        {
+            "name": "api.documents.store",
+            "uri": "api/documents",
+            "params": [],
+            "methods": [
+                "POST"
+            ],
+            "module": false,
+            "permissions": []
+        },
+        {
+            "name": "api.documents.transactions.destroy",
+            "uri": "api/documents/{document}/transactions/{transaction}",
+            "params": [
+                "document",
+                "transaction"
+            ],
+            "methods": [
+                "DELETE"
+            ],
+            "module": false,
+            "permissions": [
+                "delete-banking-transactions"
+            ]
+        },
+        {
+            "name": "api.documents.transactions.store",
+            "uri": "api/documents/{document}/transactions",
+            "params": [
+                "document"
+            ],
+            "methods": [
+                "POST"
+            ],
+            "module": false,
+            "permissions": [
+                "create-banking-transactions"
+            ]
+        },
+        {
+            "name": "api.documents.transactions.update",
+            "uri": "api/documents/{document}/transactions/{transaction}",
+            "params": [
+                "document",
+                "transaction"
+            ],
+            "methods": [
+                "PUT",
+                "PATCH"
+            ],
+            "module": false,
+            "permissions": [
+                "update-banking-transactions"
+            ]
+        },
+        {
+            "name": "api.documents.update",
+            "uri": "api/documents/{document}",
+            "params": [
+                "document"
+            ],
+            "methods": [
+                "PUT",
+                "PATCH"
+            ],
+            "module": false,
+            "permissions": []
+        },
+        {
+            "name": "api.employees.destroy",
+            "uri": "api/employees/{employee}",
+            "params": [
+                "employee"
+            ],
+            "methods": [
+                "DELETE"
+            ],
+            "module": true,
+            "permissions": [
+                "delete-employees-employees"
+            ]
+        },
+        {
+            "name": "api.employees.store",
+            "uri": "api/employees",
+            "params": [],
+            "methods": [
+                "POST"
+            ],
+            "module": true,
+            "permissions": [
+                "create-employees-employees"
+            ]
+        },
+        {
+            "name": "api.employees.update",
+            "uri": "api/employees/{employee}",
+            "params": [
+                "employee"
+            ],
+            "methods": [
+                "PUT",
+                "PATCH"
+            ],
+            "module": true,
+            "permissions": [
+                "update-employees-employees"
+            ]
+        },
+        {
+            "name": "api.items.destroy",
+            "uri": "api/items/{item}",
+            "params": [
+                "item"
+            ],
+            "methods": [
+                "DELETE"
+            ],
+            "module": false,
+            "permissions": []
+        },
+        {
+            "name": "api.items.store",
+            "uri": "api/items",
+            "params": [],
+            "methods": [
+                "POST"
+            ],
+            "module": false,
+            "permissions": []
+        },
+        {
+            "name": "api.items.update",
+            "uri": "api/items/{item}",
+            "params": [
+                "item"
+            ],
+            "methods": [
+                "PUT",
+                "PATCH"
+            ],
+            "module": false,
+            "permissions": []
+        },
+        {
+            "name": "api.reconciliations.destroy",
+            "uri": "api/reconciliations/{reconciliation}",
+            "params": [
+                "reconciliation"
+            ],
+            "methods": [
+                "DELETE"
+            ],
+            "module": false,
+            "permissions": []
+        },
+        {
+            "name": "api.reconciliations.store",
+            "uri": "api/reconciliations",
+            "params": [],
+            "methods": [
+                "POST"
+            ],
+            "module": false,
+            "permissions": []
+        },
+        {
+            "name": "api.reconciliations.update",
+            "uri": "api/reconciliations/{reconciliation}",
+            "params": [
+                "reconciliation"
+            ],
+            "methods": [
+                "PUT",
+                "PATCH"
+            ],
+            "module": false,
+            "permissions": []
+        },
+        {
+            "name": "api.reports.destroy",
+            "uri": "api/reports/{report}",
+            "params": [
+                "report"
+            ],
+            "methods": [
+                "DELETE"
+            ],
+            "module": false,
+            "permissions": []
+        },
+        {
+            "name": "api.reports.store",
+            "uri": "api/reports",
+            "params": [],
+            "methods": [
+                "POST"
+            ],
+            "module": false,
+            "permissions": []
+        },
+        {
+            "name": "api.reports.update",
+            "uri": "api/reports/{report}",
+            "params": [
+                "report"
+            ],
+            "methods": [
+                "PUT",
+                "PATCH"
+            ],
+            "module": false,
+            "permissions": []
+        },
+        {
+            "name": "api.settings.destroy",
+            "uri": "api/settings/{setting}",
+            "params": [
+                "setting"
+            ],
+            "methods": [
+                "DELETE"
+            ],
+            "module": false,
+            "permissions": [
+                "update-settings-company|update-settings-defaults|update-settings-localisation"
+            ]
+        },
+        {
+            "name": "api.settings.store",
+            "uri": "api/settings",
+            "params": [],
+            "methods": [
+                "POST"
+            ],
+            "module": false,
+            "permissions": [
+                "create-settings-company|create-settings-defaults|create-settings-localisation"
+            ]
+        },
+        {
+            "name": "api.settings.update",
+            "uri": "api/settings/{setting}",
+            "params": [
+                "setting"
+            ],
+            "methods": [
+                "PUT",
+                "PATCH"
+            ],
+            "module": false,
+            "permissions": [
+                "update-settings-company|update-settings-defaults|update-settings-localisation"
+            ]
+        },
+        {
+            "name": "api.taxes.destroy",
+            "uri": "api/taxes/{tax}",
+            "params": [
+                "tax"
+            ],
+            "methods": [
+                "DELETE"
+            ],
+            "module": false,
+            "permissions": []
+        },
+        {
+            "name": "api.taxes.store",
+            "uri": "api/taxes",
+            "params": [],
+            "methods": [
+                "POST"
+            ],
+            "module": false,
+            "permissions": []
+        },
+        {
+            "name": "api.taxes.update",
+            "uri": "api/taxes/{tax}",
+            "params": [
+                "tax"
+            ],
+            "methods": [
+                "PUT",
+                "PATCH"
+            ],
+            "module": false,
+            "permissions": []
+        },
+        {
+            "name": "api.transactions.destroy",
+            "uri": "api/transactions/{transaction}",
+            "params": [
+                "transaction"
+            ],
+            "methods": [
+                "DELETE"
+            ],
+            "module": false,
+            "permissions": []
+        },
+        {
+            "name": "api.transactions.store",
+            "uri": "api/transactions",
+            "params": [],
+            "methods": [
+                "POST"
+            ],
+            "module": false,
+            "permissions": []
+        },
+        {
+            "name": "api.transactions.update",
+            "uri": "api/transactions/{transaction}",
+            "params": [
+                "transaction"
+            ],
+            "methods": [
+                "PUT",
+                "PATCH"
+            ],
+            "module": false,
+            "permissions": []
+        },
+        {
+            "name": "api.transfers.destroy",
+            "uri": "api/transfers/{transfer}",
+            "params": [
+                "transfer"
+            ],
+            "methods": [
+                "DELETE"
+            ],
+            "module": false,
+            "permissions": []
+        },
+        {
+            "name": "api.transfers.store",
+            "uri": "api/transfers",
+            "params": [],
+            "methods": [
+                "POST"
+            ],
+            "module": false,
+            "permissions": []
+        },
+        {
+            "name": "api.transfers.update",
+            "uri": "api/transfers/{transfer}",
+            "params": [
+                "transfer"
+            ],
+            "methods": [
+                "PUT",
+                "PATCH"
+            ],
+            "module": false,
+            "permissions": []
+        },
+        {
+            "name": "api.users.destroy",
+            "uri": "api/users/{user}",
+            "params": [
+                "user"
+            ],
+            "methods": [
+                "DELETE"
+            ],
+            "module": false,
+            "permissions": []
+        },
+        {
+            "name": "api.users.store",
+            "uri": "api/users",
+            "params": [],
+            "methods": [
+                "POST"
+            ],
+            "module": false,
+            "permissions": []
+        },
+        {
+            "name": "api.users.update",
+            "uri": "api/users/{user}",
+            "params": [
+                "user"
+            ],
+            "methods": [
+                "PUT",
+                "PATCH"
+            ],
+            "module": false,
+            "permissions": []
+        }
+    ]
+}

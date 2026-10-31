@@ -100,7 +100,7 @@ final class ContractsTest extends TestCase
             'https://api.openai.com/.well-known/oauth-protected-resource/v1/mcp/tunnel_synthetic');
         $call = static fn(array $message): ?array => $mcp->execute(null,json_encode($message,JSON_THROW_ON_ERROR));
         $discovery = $call(['jsonrpc'=>'2.0','id'=>1,'method'=>'tools/list']);
-        self::assertCount(9,$discovery['result']['tools']);
+        self::assertCount(12,$discovery['result']['tools']);
         $unauthorized = $call(['jsonrpc'=>'2.0','id'=>2,'method'=>'tools/call',
             'params'=>['name'=>'akaunting_api_read','arguments'=>['company_id'=>1,'route'=>'api.users.index']]]);
         self::assertTrue($unauthorized['result']['isError']);
