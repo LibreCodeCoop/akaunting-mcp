@@ -4,7 +4,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 -->
 # Akaunting MCP Server
 
-**Consult accounting information from ChatGPT using your existing Akaunting account, without giving the assistant permission to change records.**
+**Consult Akaunting from ChatGPT and prepare changes that execute only after explicit, independent human authorization.**
 
 Developed by [LibreCode Coop](https://librecode.coop/), Akaunting MCP Server is an independent integration that connects an existing Akaunting 3.x installation to ChatGPT through the Model Context Protocol (MCP). Authorized staff can explore supported records in natural language instead of navigating multiple screens. The integration uses individual Akaunting permissions and verifies company boundaries on data reads.
 
@@ -16,11 +16,11 @@ Developed by [LibreCode Coop](https://librecode.coop/), Akaunting MCP Server is 
 - **Use a private connection.** ChatGPT connects through OAuth with PKCE and a private MCP tunnel; the internal MCP HTTP endpoint is not made public.
 - **Control your infrastructure.** You operate the Akaunting installation, deployment and encrypted credential storage. Information explicitly retrieved into a ChatGPT conversation is nevertheless processed by the connected service under its own privacy terms and controls.
 
-The current implementation includes **nine read-only tools** for identity verification, authorized company discovery, resource listing and retrieval, permission probes, company-scoped user and role listings, and reviewed native API-route discovery and reads.
+The implementation includes nine read tools and three mutation-workflow tools: route discovery, an approval proposal, and approval status. **No MCP tool can execute a write.** A prepared POST/PUT/PATCH/DELETE call is executed by the server only after a user opens a short-lived, HTTPS-hosted review form, verifies the exact company and payload, reauthenticates using their own Akaunting account and explicitly approves. A rejection makes no changes. Each approval is valid for one request only.
 
 Core resource categories include companies, dashboards, items, contacts, documents, accounts, reconciliations, transactions, transfers, reports, categories, currencies and taxes. Optional Akaunting modules may provide additional categories after their native APIs and permissions have been reviewed. A route being registered does not mean every user is authorized to call it.
 
-**Current limitations:** There are no MCP operations to create, update, delete, issue or cancel financial documents, send email, or manage permissions. NFS-e is **not integrated**; adding it requires a reusable, authorization-aware fiscal REST API contract. Effective per-user permission matrices are not exposed. Compatibility and authorization must be tested against each target Akaunting installation.
+**Coverage and limitations:** A reviewed catalog includes 57 native core CRUD routes on the tested Akaunting installation. Additional module APIs, fiscal actions (including NFS-e), email operations and unusual side-effecting GET routes are not automatically exposed. Each route requires native Akaunting permissions and verified company membership; routes with unsafe or unverifiable scope fail closed. A write approval is not permission to bypass Akaunting ACLs.
 
 ## Getting started
 
@@ -28,7 +28,7 @@ Already have an Akaunting installation? Follow [the deployment guide](docs/DEPLO
 
 ## How security works
 
-Users authorize the MCP individually through an OAuth authorization-code flow with PKCE. The authorization broker validates the linked account through Akaunting, stores the required credentials encrypted in restricted runtime storage and checks upstream identity, native permissions, company membership and returned record scope. Only reviewed, non-mutating API routes are exposed; direct arbitrary API proxying is not supported.
+Users authorize the MCP individually through an OAuth authorization-code flow with PKCE. The authorization broker validates the linked account through Akaunting, stores the required credentials encrypted in restricted runtime storage and checks upstream identity, native permissions, company membership and returned record scope. Only reviewed API routes are exposed; writes additionally require independent, per-request browser approval with reauthentication and short-lived, single-use server state. Direct arbitrary API proxying is not supported.
 
 The MCP protects its own output, but it cannot repair security defects in Akaunting for other clients. Use HTTPS for OAuth, do not publish the internal MCP listener and never use a shared administrative account as a routine integration identity.
 

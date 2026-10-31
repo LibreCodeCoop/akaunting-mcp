@@ -4,7 +4,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 -->
 # Security and authorization model
 
-The MCP is an independent, read-only client of the Akaunting REST API. Akaunting remains the source of identity, authorization and company membership; the MCP adds its own fail-closed controls. Its filtering does **not** repair vulnerabilities in Akaunting for other API clients.
+The MCP is an independent, authorization-enforced client of the Akaunting REST API. Akaunting remains the source of identity, authorization and company membership; the MCP adds its own fail-closed controls. Its filtering does **not** repair vulnerabilities in Akaunting for other API clients.
 
 ## Authentication and session lifecycle
 
@@ -30,6 +30,6 @@ Use separate per-user Akaunting identities and avoid a shared administrator acco
 
 ## Validation and limitations
 
-The current tools are read-only: no accounting writes, user/permission changes, invoice issuance/cancellation or NFS-e integration. Test allowed and denied roles, company isolation, token revocation, OAuth PKCE and private-network boundaries against a **disposable instance with synthetic accounts**. Never validate tenant boundaries against real customers' data.
+Financial changes use a separate, single-use, 10-minute browser approval flow, never an MCP execution tool. Pending requests are encrypted at rest and bound to user identity, OAuth credential generation, company, exact method, path and JSON payload. Approval demands a matching personal Akaunting login, secure Strict SameSite cookie, per-view CSRF token and an explicit user click. Deletions additionally demand an exact confirmation phrase. Only the approved browser request can execute; retries after unknown results are forbidden. Native ACLs and selected-company membership are verified again before execution. Test allowed and denied roles, company isolation, token revocation, OAuth PKCE and authorization boundaries against a **disposable instance with synthetic accounts**. Never validate writes using production financial data.
 
 For vulnerability reports, follow the [private disclosure policy](../SECURITY.md). Do not publish proof-of-concept records, affected customer details or private infrastructure identifiers in issues, pull requests, logs or this documentation.

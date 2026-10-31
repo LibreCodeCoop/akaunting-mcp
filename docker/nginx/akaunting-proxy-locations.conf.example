@@ -58,6 +58,25 @@ location = /akaunting-mcp-auth/login {
     proxy_redirect off;
 }
 
+# Each change is approved only through this independent browser route.
+# It is never an alias for the internal /mcp endpoint.
+location = /akaunting-mcp-auth/approve {
+    access_log off;
+    limit_except GET POST { deny all; }
+    client_max_body_size 8k;
+    resolver 127.0.0.11 ipv6=off valid=30s;
+    set $akaunting_mcp_oauth_upstream "http://akaunting-mcp-oauth-edge:8081";
+    proxy_pass $akaunting_mcp_oauth_upstream$request_uri;
+    proxy_http_version 1.1;
+    proxy_set_header Host accounting.example.org;
+    proxy_set_header X-Forwarded-Proto https;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header Connection "";
+    proxy_connect_timeout 4s;
+    proxy_read_timeout 25s;
+    proxy_redirect off;
+}
 location = /akaunting-mcp-auth/token {
     access_log off;
     limit_except POST { deny all; }

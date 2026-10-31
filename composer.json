@@ -1,6 +1,6 @@
 {
     "name": "librecode/akaunting-mcp",
-    "description": "Read-only OAuth-secured Akaunting MCP server",
+    "description": "Human-approved OAuth-secured Akaunting MCP server",
     "type": "project",
     "license": "AGPL-3.0-or-later",
     "require": {
