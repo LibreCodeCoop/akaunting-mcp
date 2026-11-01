@@ -62,7 +62,7 @@ requireCheck($status === 421, 'mcp_host_rejected');
 requireCheck($status === 403, 'mcp_origin_rejected');
 
 $tools = jsonMessage('/mcp', ['jsonrpc'=>'2.0','id'=>1,'method'=>'tools/list']);
-requireCheck(count($tools['result']['tools'] ?? []) === 9, 'mcp_nine_tools');
+requireCheck(count($tools['result']['tools'] ?? []) === 12, 'mcp_twelve_tools');
 $challenge = jsonMessage('/mcp', ['jsonrpc'=>'2.0','id'=>2,'method'=>'tools/call',
     'params'=>['name'=>'akaunting_whoami','arguments'=>new stdClass()]]);
 requireCheck(($challenge['result']['isError'] ?? null) === true &&
@@ -110,7 +110,7 @@ $who = jsonMessage('/mcp', ['jsonrpc'=>'2.0','id'=>3,'method'=>'tools/call',
     'params'=>['name'=>'akaunting_whoami','arguments'=>new stdClass()]], $auth);
 $identity = json_decode($who['result']['content'][0]['text'] ?? '{}',true,16,JSON_THROW_ON_ERROR);
 requireCheck(($identity['authenticated'] ?? false) === true &&
-    ($identity['writes_enabled'] ?? true) === false, 'oauth_authenticated_whoami');
+    ($identity['writes_enabled'] ?? false) === true && ($identity['human_approval_required'] ?? false), 'oauth_authenticated_whoami');
 $records = jsonMessage('/mcp', ['jsonrpc'=>'2.0','id'=>4,'method'=>'tools/call',
     'params'=>['name'=>'akaunting_list_records', 'arguments'=>[
         'company_id'=>1,'resource'=>'categories','page'=>1,'limit'=>1]]], $auth);
@@ -132,6 +132,151 @@ requireCheck(($nativeData['data'][0]['company_id'] ?? null) === 1
     && ($nativeData['data'][0]['name'] ?? null) === 'Synthetic category',
     'native_api_read_authorized');
 
+// A model can propose a write, but the only executor is the issuer-host
+// browser form requiring independent reauthentication and explicit consent.
+$prepare = static fn(array $request): array => jsonMessage('/mcp', [
+    'jsonrpc'=>'2.0','id'=>30,'method'=>'tools/call',
+    'params'=>['name'=>'akaunting_prepare_mutation','arguments'=>$request],
+], $auth);
+$proposal=$prepare([
+    'company_id'=>1,'route'=>'api.contacts.update','method'=>'PATCH',
+    'route_params'=>['contact'=>7],'record_type'=>'vendor',
+    'body'=>['name'=>'Synthetic updated person'],
+]);
+requireCheck(($proposal['result']['isError'] ?? true) === false, 'mutation_prepared_not_executed');
+$prepared=json_decode($proposal['result']['content'][0]['text'],true,16,JSON_THROW_ON_ERROR);
+requireCheck($prepared['status']==='awaiting_human_approval'
+    && str_contains($prepared['approval_url'],'/mcp-auth/approve?request=')
+    && json_decode((string)file_get_contents((string)getenv('MCP_SMOKE_MUTATION_STATE')),true)===[],
+    'mutation_requires_browser_consent');
+
+[$status,$headers,$approvalPage]=httpRequest('/mcp-auth/approve?request='.$prepared['request_id']);
+preg_match('/name="csrf" value="([^"]+)"/',$approvalPage,$approvalCsrf);
+preg_match('/Set-Cookie:\s*akaunting_mcp_approval=([^;\r\n]+)/i',$headers,$approvalCookie);
+requireCheck($status===200 && isset($approvalCsrf[1],$approvalCookie[1])
+    && str_contains($approvalPage,'Synthetic updated person')
+    && str_contains($approvalPage,'PATCH')
+    && str_contains($approvalPage,'api.contacts.update'), 'mutation_review_is_explicit');
+
+$form=http_build_query([
+    'request'=>$prepared['request_id'],'csrf'=>$approvalCsrf[1],
+    'decision'=>'approve','email'=>'test@example.invalid',
+    'password'=>'incorrect-password',
+],'','&',PHP_QUERY_RFC3986);
+[$status]=httpRequest('/mcp-auth/approve','POST',$form,[
+    'Content-Type: application/x-www-form-urlencoded',
+    'Origin: https://localhost',
+    'Cookie: akaunting_mcp_approval='.$approvalCookie[1],
+]);
+requireCheck($status===409
+    && json_decode((string)file_get_contents((string)getenv('MCP_SMOKE_MUTATION_STATE')),true)===[],
+    'approval_rejects_wrong_password');
+
+$form=http_build_query([
+    'request'=>$prepared['request_id'],'csrf'=>$approvalCsrf[1],
+    'decision'=>'approve','email'=>'test@example.invalid',
+    'password'=>'synthetic-password',
+],'','&',PHP_QUERY_RFC3986);
+[$status,, $done]=httpRequest('/mcp-auth/approve','POST',$form,[
+    'Content-Type: application/x-www-form-urlencoded',
+    'Origin: https://localhost',
+    'Cookie: akaunting_mcp_approval='.$approvalCookie[1],
+]);
+$executed=json_decode((string)file_get_contents((string)getenv('MCP_SMOKE_MUTATION_STATE')),true);
+requireCheck($status===200 && str_contains($done,'Operação realizada')
+    && count($executed)===1 && $executed[0]['method']==='PATCH'
+    && $executed[0]['body']['name']==='Synthetic updated person',
+    'approved_write_reaches_synthetic_akaunting_exactly_once');
+
+[$status]=httpRequest('/mcp-auth/approve','POST',$form,[
+    'Content-Type: application/x-www-form-urlencoded',
+    'Origin: https://localhost',
+    'Cookie: akaunting_mcp_approval='.$approvalCookie[1],
+]);
+requireCheck($status===409
+    && count(json_decode((string)file_get_contents((string)getenv('MCP_SMOKE_MUTATION_STATE')),true))===1,
+    'approved_write_cannot_replay');
+
+$mutStatus=jsonMessage('/mcp',[
+    'jsonrpc'=>'2.0','id'=>31,'method'=>'tools/call','params'=>[
+        'name'=>'akaunting_mutation_status',
+        'arguments'=>['company_id'=>1,'request_id'=>$prepared['request_id']],
+    ],
+],$auth);
+$mutState=json_decode($mutStatus['result']['content'][0]['text'],true,16,JSON_THROW_ON_ERROR);
+requireCheck($mutState['status']==='completed','mutation_status_reports_success');
+
+$crossTenant=$prepare([
+    'company_id'=>1,'route'=>'api.contacts.update','method'=>'PATCH',
+    'route_params'=>['contact'=>7],'record_type'=>'vendor',
+    'body'=>['name'=>'Unauthorized','company_id'=>2],
+]);
+requireCheck(($crossTenant['result']['isError']??false)===true
+    && count(json_decode((string)file_get_contents((string)getenv('MCP_SMOKE_MUTATION_STATE')),true))===1,
+    'mutating_cross_company_payload_rejected');
+
+$delete=$prepare([
+    'company_id'=>1,'route'=>'api.contacts.destroy','method'=>'DELETE',
+    'route_params'=>['contact'=>7],'record_type'=>'vendor',
+]);
+$deleteRequest=json_decode($delete['result']['content'][0]['text'],true,16,JSON_THROW_ON_ERROR);
+[$status,$headers,$page]=httpRequest('/mcp-auth/approve?request='.$deleteRequest['request_id']);
+preg_match('/name="csrf" value="([^"]+)"/',$page,$csrfDelete);
+preg_match('/Set-Cookie:\s*akaunting_mcp_approval=([^;\r\n]+)/i',$headers,$cookieDelete);
+requireCheck($status===200 && str_contains($page,'Digite EXCLUIR'),'destructive_action_requires_phrase');
+$rejection=http_build_query([
+    'request'=>$deleteRequest['request_id'],'csrf'=>$csrfDelete[1],
+    'decision'=>'reject',
+],'','&',PHP_QUERY_RFC3986);
+[$status]=httpRequest('/mcp-auth/approve','POST',$rejection,[
+    'Content-Type: application/x-www-form-urlencoded',
+    'Cookie: akaunting_mcp_approval='.$cookieDelete[1],
+]);
+requireCheck($status===200
+    && count(json_decode((string)file_get_contents((string)getenv('MCP_SMOKE_MUTATION_STATE')),true))===1,
+    'browser_rejection_does_not_change_records');
+$create=$prepare([
+    'company_id'=>1,'route'=>'api.contacts.store','method'=>'POST',
+    'record_type'=>'vendor','body'=>['name'=>'Synthetic newly created vendor'],
+]);
+$createPlan=json_decode($create['result']['content'][0]['text'],true,16,JSON_THROW_ON_ERROR);
+[$status,$headers,$page]=httpRequest('/mcp-auth/approve?request='.$createPlan['request_id']);
+preg_match('/name="csrf" value="([^"]+)"/',$page,$csrfCreate);
+preg_match('/Set-Cookie:\s*akaunting_mcp_approval=([^;\r\n]+)/i',$headers,$cookieCreate);
+[$status]=httpRequest('/mcp-auth/approve','POST',http_build_query([
+    'request'=>$createPlan['request_id'],'csrf'=>$csrfCreate[1],
+    'decision'=>'approve','email'=>'test@example.invalid','password'=>'synthetic-password',
+],'','&',PHP_QUERY_RFC3986),[
+    'Content-Type: application/x-www-form-urlencoded','Origin: https://localhost',
+    'Cookie: akaunting_mcp_approval='.$cookieCreate[1],
+]);
+$writes=json_decode((string)file_get_contents((string)getenv('MCP_SMOKE_MUTATION_STATE')),true);
+requireCheck($status===200 && count($writes)===2
+    && $writes[1]['method']==='POST'
+    && $writes[1]['body']['type']==='vendor'
+    && $writes[1]['body']['company_id']===1,
+    'created_record_requires_explicit_human_approval');
+
+$delete=$prepare([
+    'company_id'=>1,'route'=>'api.contacts.destroy','method'=>'DELETE',
+    'route_params'=>['contact'=>7],'record_type'=>'vendor',
+]);
+$deletePlan=json_decode($delete['result']['content'][0]['text'],true,16,JSON_THROW_ON_ERROR);
+[$status,$headers,$page]=httpRequest('/mcp-auth/approve?request='.$deletePlan['request_id']);
+preg_match('/name="csrf" value="([^"]+)"/',$page,$csrfDelete);
+preg_match('/Set-Cookie:\s*akaunting_mcp_approval=([^;\r\n]+)/i',$headers,$cookieDelete);
+[$status]=httpRequest('/mcp-auth/approve','POST',http_build_query([
+    'request'=>$deletePlan['request_id'],'csrf'=>$csrfDelete[1],
+    'decision'=>'approve','email'=>'test@example.invalid',
+    'password'=>'synthetic-password','confirmation'=>'EXCLUIR',
+],'','&',PHP_QUERY_RFC3986),[
+    'Content-Type: application/x-www-form-urlencoded','Origin: https://localhost',
+    'Cookie: akaunting_mcp_approval='.$cookieDelete[1],
+]);
+$writes=json_decode((string)file_get_contents((string)getenv('MCP_SMOKE_MUTATION_STATE')),true);
+requireCheck($status===200 && count($writes)===3 && $writes[2]['method']==='DELETE'
+    && $writes[2]['path']==='/api/contacts/7',
+    'destructive_approval_executes_exactly_once');
 $unsafeRoute = jsonMessage('/mcp', [
     'jsonrpc'=>'2.0','id'=>7,'method'=>'tools/call',
     'params'=>['name'=>'akaunting_api_read','arguments'=>[

@@ -19,7 +19,7 @@ The [non-secret configuration example](../.env.example) illustrates the required
 
 ## Authentication behavior
 
-The broker validates the Akaunting account against the selected company, stores the required credentials encrypted at rest, and issues short-lived MCP access tokens with a fixed resource audience. The MCP then checks the upstream user and company permissions for each requested business read. Routes are read-only and restricted to reviewed native API patterns.
+The broker validates the Akaunting account against the selected company, stores the required credentials encrypted at rest, and issues short-lived MCP access tokens with a fixed resource audience. The MCP then checks the upstream user and company permissions for each requested business read. Read and write routes are restricted to reviewed native API patterns. Every write is independently approved on the issuer website after reauthentication; the ChatGPT tool alone never alters records.
 
 A route appearing in the catalog does not imply that the connected user can access it. Cross-company or unverified response data must not be returned by the MCP. No account/permission changes or financial mutations are available.
 

@@ -6,6 +6,7 @@ declare(strict_types=1);
 namespace AkauntingMcp\Tests;
 
 require_once dirname(__DIR__, 2) . '/bin/generate-api-catalog.php';
+require_once dirname(__DIR__, 2) . '/bin/generate-write-catalog.php';
 require_once dirname(__DIR__, 2) . '/tools/check-release-scope.php';
 require_once dirname(__DIR__, 2) . '/tools/check-reuse-headers.php';
 require_once dirname(__DIR__) . '/integration/check-docker-smoke.php';
@@ -49,6 +50,29 @@ final class ToolingTest extends TestCase
         \generateApiCatalog($routes);
     }
 
+    public function testWriteCatalogGeneratorRejectsUnreviewedActions(): void
+    {
+        $candidate=generateWriteCatalog([
+            ['name'=>'api.contacts.store','uri'=>'api/contacts','method'=>'POST',
+                'action'=>'App\\Contacts@store','middleware'=>['Permission:create-sales-customers']],
+            ['name'=>'api.contacts.update','uri'=>'api/contacts/{contact}','method'=>'PUT|PATCH',
+                'action'=>'App\\Contacts@update'],
+            ['name'=>'api.contacts.destroy','uri'=>'api/contacts/{contact}','method'=>'DELETE',
+                'action'=>'App\\Contacts@destroy'],
+            ['name'=>'api.contacts.untrusted','uri'=>'api/contacts/delete-everything',
+                'method'=>'GET','action'=>'App\\Contacts@untrusted'],
+            ['name'=>'apps.api-key.destroy','uri'=>'3/apps/api-key/2',
+                'method'=>'DELETE','action'=>'App\\Secrets@destroy'],
+        ]);
+        self::assertCount(3,$candidate['routes']);
+        self::assertSame(['PUT','PATCH'],$candidate['routes'][2]['methods']);
+        self::assertSame(['create-sales-customers'],$candidate['routes'][1]['permissions']);
+        $this->expectException(RuntimeException::class);
+        generateWriteCatalog([
+            ['name'=>'api.contacts.store','uri'=>'api/contacts','method'=>'POST','action'=>'Contact@store'],
+            ['name'=>'api.contacts.store','uri'=>'api/contacts','method'=>'POST','action'=>'Contact@store'],
+        ]);
+    }
     public function testPublicationCheckerRejectsTransientFiles(): void
     {
         self::assertTrue(\scopeBlockedPath('docs/CONTINUITY-test.md'));

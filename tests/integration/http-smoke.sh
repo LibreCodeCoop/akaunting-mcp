@@ -23,6 +23,8 @@ export MCP_OAUTH_REDIRECT_URI=https://chatgpt.com/connector/oauth/synthetic
 export MCP_RESOURCE_URI=https://api.openai.com/v1/mcp/tunnel_synthetic
 export MCP_ALLOWED_HOSTS=localhost,127.0.0.1
 export MCP_DATA_DIR="$private_dir/state"
+export MCP_SMOKE_MUTATION_STATE="$private_dir/writes.json"
+printf '[]' > "$MCP_SMOKE_MUTATION_STATE"
 export MCP_TOKEN_ENCRYPTION_KEY_FILE="$private_dir/key"
 php -r 'file_put_contents(getenv("MCP_TOKEN_ENCRYPTION_KEY_FILE"),base64_encode(random_bytes(32)));'
 php -S 127.0.0.1:8875 tests/fixtures/perf_router.php >"$private_dir/upstream.log" 2>&1 &

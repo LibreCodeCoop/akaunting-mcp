@@ -18,6 +18,11 @@ class Api
     private ?string $connectionIdentity = null;
     private ?RouteCatalog $catalog = null;
 
+    public function issuer(): string
+    {
+        return $this->config->issuer;
+    }
+
     public function routeCatalog(): RouteCatalog
     {
         return $this->catalog ??= new RouteCatalog();
@@ -126,6 +131,73 @@ class Api
         }
     }
 
+    /**
+     * Native write with independently approved request parameters. A new cURL
+     * handle avoids cross-method reuse: a POST can never turn a later GET into
+     * a mutation. The API path must be from the reviewed write catalog.
+     */
+    public function mutate(
+        string $email, string $password, string $method, string $path, int $companyId, array $body
+    ): array {
+        if ($email==='' || $password==='') throw new RuntimeException('Missing personal credentials');
+        if (!(new WriteRouteCatalog())->permits($method,$path)) {
+            throw new RuntimeException('Unregistered API mutation');
+        }
+        self::companyId($companyId);
+        $payload = json_encode($body === [] ? new \stdClass() : $body,
+            JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR);
+        if (strlen($payload) > 32768) throw new RuntimeException('Mutation request too large');
+
+        $url = $this->config->akauntingUrl.'/api'.$path.'?'.http_build_query(
+            ['company_id'=>$companyId], '', '&', PHP_QUERY_RFC3986
+        );
+        $handle = curl_init();
+        if ($handle === false) throw new RuntimeException('Cannot initialize write request');
+        $response = '';
+        $overLimit = false;
+        $receive = static function (\CurlHandle $curl, string $chunk) use (&$response, &$overLimit): int {
+            $size = strlen($chunk);
+            if ($size > 2_000_000 - strlen($response)) {
+                $overLimit = true;
+                return 0;
+            }
+            $response .= $chunk;
+            return $size;
+        };
+        try {
+            $settings = [
+                CURLOPT_URL=>$url, CURLOPT_CUSTOMREQUEST=>$method,
+                CURLOPT_RETURNTRANSFER=>true, CURLOPT_WRITEFUNCTION=>$receive,
+                CURLOPT_FOLLOWLOCATION=>false, CURLOPT_MAXREDIRS=>0,
+                CURLOPT_HTTPAUTH=>CURLAUTH_BASIC, CURLOPT_USERPWD=>$email.':'.$password,
+                CURLOPT_HTTPHEADER=>[
+                    'Accept: application/json',
+                    'Content-Type: application/json',
+                    'User-Agent: LibreCode-Akaunting-MCP/0.2',
+                ],
+                CURLOPT_ENCODING=>'', CURLOPT_TIMEOUT=>20, CURLOPT_CONNECTTIMEOUT=>5,
+                CURLOPT_SSL_VERIFYPEER=>true, CURLOPT_SSL_VERIFYHOST=>2,
+                CURLOPT_PROTOCOLS=>$this->config->allowLoopbackHttp
+                    ? CURLPROTO_HTTP|CURLPROTO_HTTPS : CURLPROTO_HTTPS,
+            ];
+            if ($method!=='DELETE' || $body!==[]) $settings[CURLOPT_POSTFIELDS]=$payload;
+            if (!curl_setopt_array($handle,$settings)) {
+                throw new RuntimeException('Cannot configure API mutation');
+            }
+            $success = curl_exec($handle);
+            $code = (int)curl_getinfo($handle,CURLINFO_HTTP_CODE);
+            if ($overLimit) throw new RuntimeException('Akaunting response exceeds safe size');
+            if ($success === false || $code < 200 || $code >= 300) {
+                throw new RuntimeException('Akaunting request rejected (HTTP '.($code?:'unavailable').')');
+            }
+            if (trim($response) === '') return ['http_status'=>$code];
+            $data = json_decode($response,true,64,JSON_THROW_ON_ERROR);
+            if (!is_array($data)) throw new RuntimeException('Unexpected Akaunting mutation response');
+            return ['http_status'=>$code, 'data'=>ReadResponseGuard::redact($data)];
+        } finally {
+            unset($handle);
+        }
+    }
     public function verify(string $email, string $password, int $companyId): void
     {
         self::companyId($companyId);

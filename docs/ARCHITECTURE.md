@@ -4,7 +4,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 -->
 # Architecture and trust boundaries
 
-The service is a separate, read-only PHP MCP server for Akaunting 3.x. It does
+The service is a separate, approval-gated PHP MCP server for Akaunting 3.x. It does
 not install code into Akaunting and does not implement tax/NFS-e issuance.
 
 ## Request lifecycle
@@ -45,7 +45,7 @@ encrypted credentials. There is no shared cross-user response cache.
 
 ## Tool and route policy
 
-Nine tools are exposed. All are read-only. The repository includes a
+Twelve tools are exposed. Nine are read-only; the additional tools discover mutating routes, prepare browser approvals and read their status. The model cannot execute a mutation. The repository includes a
 reviewed reference API-route manifest with core and optional module routes.
 The manifest is not an inventory of a customer's installed modules, proof of
 endpoint availability, or evidence of individual authorization. Each target

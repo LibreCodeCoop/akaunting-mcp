@@ -76,7 +76,7 @@ function checkDockerSmoke(string $mode, array $data): void
     if ($mode === 'tools') {
         smokeExpect(!isset($data['error']), 'no MCP tool discovery error');
         smokeExpect(is_array($data['result']['tools'] ?? null)
-            && count($data['result']['tools']) === 9, 'exactly nine MCP tools');
+            && count($data['result']['tools']) === 12, 'exactly twelve MCP tools');
         return;
     }
     throw new InvalidArgumentException('Unknown smoke contract');

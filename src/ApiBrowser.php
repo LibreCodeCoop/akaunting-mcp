@@ -28,7 +28,7 @@ final class ApiBrowser
         return [
             'registered_read_routes'=>$routes,
             'count'=>count($routes),
-            'mutations_enabled'=>false,
+            'mutations_enabled'=>true, 'mutation_route_discovery_tool'=>'akaunting_mutation_routes', 'human_approval_required'=>true,
             'permission_note'=>'Registration is not proof of authorization; each request uses the linked personal user ACL and selected company.',
             'sensitive_resources'=>'Users and settings have additional tenant and secret filtering.',
         ];

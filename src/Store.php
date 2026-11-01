@@ -100,7 +100,7 @@ final class Store
             }
         });
         $this->state(function (array &$data) use ($subject): void {
-            foreach (['codes','refresh','tickets'] as $type) {
+            foreach (['codes','refresh','tickets','approvals'] as $type) {
                 foreach ($data[$type] as $key=>$value) {
                     if (($value['subject'] ?? null) === $subject) {
                         unset($data[$type][$key]);
@@ -115,7 +115,7 @@ final class Store
     {
         return $this->locked('oauth-state', function () use ($callback): mixed {
             $file = $this->config->dataDir.'/oauth-state.json';
-            $data = ['tickets'=>[], 'codes'=>[], 'refresh'=>[], 'login_attempts'=>[], 'authorize_attempts'=>[]];
+            $data = ['tickets'=>[], 'codes'=>[], 'refresh'=>[], 'login_attempts'=>[], 'authorize_attempts'=>[], 'approvals'=>[]];
             if (is_file($file)) {
                 $decoded = json_decode((string)file_get_contents($file), true, 24, JSON_THROW_ON_ERROR);
                 if (!is_array($decoded)) {
@@ -123,7 +123,7 @@ final class Store
                 }
                 $data = array_merge($data, $decoded);
             }
-            foreach (['tickets','codes','refresh','login_attempts','authorize_attempts'] as $type) {
+            foreach (['tickets','codes','refresh','login_attempts','authorize_attempts','approvals'] as $type) {
                 foreach ($data[$type] as $key=>$item) {
                     if (($item['expires'] ?? 0) < time()) {
                         unset($data[$type][$key]);
@@ -136,6 +136,31 @@ final class Store
         });
     }
 
+    /** Financial approval plans are encrypted at rest, never plaintext in OAuth state. */
+    public function sealPlan(array $plan): string
+    {
+        $plain=json_encode($plan,JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR);
+        $nonce=random_bytes(SODIUM_CRYPTO_SECRETBOX_NONCEBYTES);
+        $key=hash_hkdf('sha256',$this->config->encryptionKey,32,'akaunting-mcp/approval-v1');
+        return base64_encode($nonce.sodium_crypto_secretbox($plain,$nonce,$key));
+    }
+
+    public function openPlan(string $sealed): array
+    {
+        $blob=base64_decode($sealed,true);
+        if (!is_string($blob) || strlen($blob)<=SODIUM_CRYPTO_SECRETBOX_NONCEBYTES+SODIUM_CRYPTO_SECRETBOX_MACBYTES) {
+            throw new RuntimeException('Invalid approval state');
+        }
+        $key=hash_hkdf('sha256',$this->config->encryptionKey,32,'akaunting-mcp/approval-v1');
+        $plain=sodium_crypto_secretbox_open(
+            substr($blob,SODIUM_CRYPTO_SECRETBOX_NONCEBYTES),
+            substr($blob,0,SODIUM_CRYPTO_SECRETBOX_NONCEBYTES),$key
+        );
+        if (!is_string($plain))throw new RuntimeException('Approval state authentication failed');
+        $decoded=json_decode($plain,true,16,JSON_THROW_ON_ERROR);
+        if (!is_array($decoded))throw new RuntimeException('Invalid approval plan');
+        return $decoded;
+    }
     private function readUserFile(string $file): array
     {
         $raw = @file_get_contents($file);

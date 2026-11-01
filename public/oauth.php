@@ -4,6 +4,7 @@
 declare(strict_types=1);
 
 use AkauntingMcp\Api;
+use AkauntingMcp\ApprovalService;
 use AkauntingMcp\Config;
 use AkauntingMcp\OAuth;
 use AkauntingMcp\Store;
@@ -63,7 +64,7 @@ try {
         echo 'button:hover{background:#1849a9}button:focus-visible{outline:3px solid #84caff;outline-offset:2px}';
         echo '.footer{font-size:.78rem;color:#667085;text-align:center;margin:17px 0 0}@media(max-width:480px){.panel{padding:24px}}';
         echo '</style></head><body><main class="panel"><div class="brand">LibreCode · Akaunting</div>';
-        echo '<h1>Conectar sua conta</h1><p>Use os dados da sua conta no Akaunting. A integração respeita suas permissões e permanece somente leitura.</p>';
+        echo '<h1>Conectar sua conta</h1><p>Use os dados da sua conta no Akaunting. A integração respeita suas permissões. Qualquer alteração requer sua aprovação individual autenticada.</p>';
         echo '<form method="post" action="'.$action.'">';
         echo '<input type="hidden" name="ticket" value="'.$ticket.'">';
         echo '<input type="hidden" name="csrf" value="'.$csrf.'">';
@@ -111,9 +112,102 @@ try {
         echo json_encode($oauth->token($_POST),JSON_THROW_ON_ERROR);
         exit;
     }
-    http_response_code(404);
-} catch (\Throwable $error) {
-    // Browser login errors are not OAuth protocol errors. Classify known
+    if ($path === $issuerPath.'/approve' && $method === 'GET') {
+        $ticket = $_GET['request'] ?? null;
+        if (!is_string($ticket))throw new RuntimeException('Invalid approval ticket');
+        $review=(new ApprovalService(new Store($config),new Api($config),$config->issuer))->review($ticket);
+        setcookie('akaunting_mcp_approval',$review['cookie'],[
+            'expires'=>$review['expires'],'path'=>$issuerPath.'/approve',
+            'secure'=>true,'httponly'=>true,'samesite'=>'Strict',
+        ]);
+        $summary=(new ApprovalService(new Store($config),new Api($config),$config->issuer))->summary($review['plan']);
+        $h=static fn(string $v): string => htmlspecialchars($v,ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8');
+        $fields=json_encode($summary['body'],JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR);
+        $targets=json_encode($summary['target_ids'],JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR);
+        $action=$h($issuerPath.'/approve');
+        $csrf=$h($review['csrf']);
+        $id=$h($review['request_id']);
+        $risk=$summary['destructive'] ? 'Esta exclusão pode ser irreversível.' : 'A alteração só será executada após sua autorização.';
+        header('Content-Type: text/html; charset=utf-8');
+        echo '<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">';
+        echo '<title>Autorizar alteração no Akaunting</title>';
+        echo '<style>:root{font:16px/1.5 system-ui,-apple-system,sans-serif;color:#182230;background:#f6f8fb}';
+        echo 'body{margin:0;padding:28px 16px}main{max-width:650px;margin:auto;background:white;border:1px solid #e5e7eb;border-radius:14px;padding:30px}';
+        echo 'h1{font-size:1.55rem;margin:0 0 12px}p{color:#475467}dl{display:grid;grid-template-columns:125px 1fr;gap:8px;margin:22px 0}';
+        echo 'dt{font-weight:700}dd{margin:0;overflow-wrap:anywhere}pre{overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;background:#f2f4f7;padding:15px;border-radius:8px}';
+        echo 'label{display:block;margin:12px 0 6px;font-weight:600}input{box-sizing:border-box;width:100%;padding:10px;border:1px solid #98a2b3;border-radius:6px;font:inherit}';
+        echo 'button{display:block;width:100%;padding:12px;font:600 1rem system-ui;border:0;border-radius:8px;cursor:pointer}';
+        echo 'button.confirm{background:#175cd3;color:white;margin-top:20px}button.reject{background:#f2f4f7;color:#344054;margin-top:10px}';
+        echo '.notice{background:#fffaeb;border-left:3px solid #dc6803;padding:12px;margin:18px 0;color:#713f12}';
+        echo '</style></head><body><main><h1>Conferir operação no Akaunting</h1>';
+        echo '<p>Esta solicitação não foi executada. Confira todos os campos abaixo antes de autorizar.</p>';
+        echo '<dl><dt>Operação</dt><dd>'.$h($summary['method']).'</dd>';
+        echo '<dt>Recurso da API</dt><dd>'.$h($summary['route']).'</dd>';
+        echo '<dt>Empresa</dt><dd>'.$h((string)$summary['company_id']).'</dd>';
+        echo '<dt>Registro(s)</dt><dd>'.$h($targets).'</dd>';
+        echo '<dt>Tipo</dt><dd>'.$h((string)($summary['record_type']??'—')).'</dd></dl>';
+        echo '<h2>Dados enviados à API</h2><pre>'.$h($fields).'</pre>';
+        echo '<p class="notice">'.$h($risk).' Campos confidenciais são ocultados na revisão, mas seus valores permanecem inalterados na requisição.</p>';
+        echo '<form method="post" action="'.$action.'"><input type="hidden" name="request" value="'.$id.'">';
+        echo '<input type="hidden" name="csrf" value="'.$csrf.'"><input type="hidden" name="decision" value="approve">';
+        echo '<label for="email">Seu e-mail do Akaunting</label><input id="email" type="email" name="email" required autocomplete="username" maxlength="254">';
+        echo '<label for="password">Senha do Akaunting (reconfirmação obrigatória)</label><input id="password" type="password" name="password" required autocomplete="current-password">';
+        if ($summary['destructive']) {
+            echo '<label for="confirmation">Digite EXCLUIR para confirmar</label><input id="confirmation" name="confirmation" type="text" required pattern="EXCLUIR" autocomplete="off">';
+        }
+        echo '<button type="submit" class="confirm">Autorizar e executar esta operação</button></form>';
+        echo '<form method="post" action="'.$action.'"><input type="hidden" name="request" value="'.$id.'">';
+        echo '<input type="hidden" name="csrf" value="'.$csrf.'"><input type="hidden" name="decision" value="reject">';
+        echo '<button type="submit" class="reject">Recusar sem alterar dados</button></form>';
+        echo '</main></body></html>';
+        exit;
+    }
+    if ($path === $issuerPath.'/approve' && $method === 'POST') {
+        if ((int)($_SERVER['CONTENT_LENGTH'] ?? 0) > 8192) {
+            throw new RuntimeException('Approval request too large');
+        }
+        $origin=$_SERVER['HTTP_ORIGIN'] ?? null;
+        $expected=parse_url($config->issuer,PHP_URL_SCHEME).'://'.$issuerHost;
+        if ($origin!==null && $origin!==$expected) {
+            throw new RuntimeException('Untrusted approval origin');
+        }
+        $ticket=$_POST['request'] ?? null;
+        $csrf=$_POST['csrf'] ?? null;
+        $decision=$_POST['decision'] ?? null;
+        if (!is_string($ticket) || !is_string($csrf) || !is_string($decision)) {
+            throw new RuntimeException('Malformed approval submission');
+        }
+        $result=(new ApprovalService(new Store($config),new Api($config),$config->issuer))->decide(
+            $ticket,$csrf,(string)($_COOKIE['akaunting_mcp_approval'] ?? ''),$decision,
+            (string)($_POST['email'] ?? ''),(string)($_POST['password'] ?? ''),
+            (string)($_POST['confirmation'] ?? '')
+        );
+        setcookie('akaunting_mcp_approval','',[
+            'expires'=>time()-3600,'path'=>$issuerPath.'/approve',
+            'secure'=>true,'httponly'=>true,'samesite'=>'Strict',
+        ]);
+        $success=$result['status']==='completed';
+        header('Content-Type: text/html; charset=utf-8');
+        echo '<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Confirmação Akaunting</title>';
+        echo '<style>body{font:16px/1.6 system-ui,sans-serif;background:#f7f9fc;color:#182230;margin:6vh auto;max-width:560px;padding:20px}main{background:white;padding:30px;border-radius:12px}a{color:#175cd3}</style>';
+        echo '</head><body><main><h1>'.($success?'Operação realizada':'Operação recusada').'</h1>';
+        echo '<p>'.($success?'O Akaunting aceitou a operação autorizada. Verifique o registro pela ferramenta de consulta.':'Nenhum registro foi alterado.').'</p>';
+        echo '<p>Retorne à conversa para consultar o status e conferir os resultados.</p></main></body></html>';
+        exit;
+    }    http_response_code(404);
+} catch (Throwable $error) {
+    if (($path ?? '') === ($issuerPath ?? '').'/approve') {
+        // Do not echo financial data, credentials, or raw upstream errors.
+        error_log('Akaunting MCP approval rejected category='.get_class($error));
+        http_response_code(409);
+        header('Content-Type: text/html; charset=utf-8');
+        echo '<!doctype html><html lang="pt-BR"><meta charset="utf-8"><title>Não foi possível aprovar</title>';
+        echo '<body style="font:16px/1.6 system-ui,sans-serif;max-width:520px;margin:6vh auto;padding:22px">';
+        echo '<h1>Não foi possível concluir a autorização</h1>';
+        echo '<p>A sessão, a identidade, as permissões ou o estado do registro não puderam ser confirmados. Não tente repetir a alteração sem consultar seu resultado no Akaunting.</p>';
+        echo '</body></html>';
+        exit;
+    }    // Browser login errors are not OAuth protocol errors. Classify known
     // failures without logging credentials, identities, cookies or tokens.
     if (($method ?? '') === 'POST' && ($path ?? '') === ($issuerPath ?? '').'/login') {
         $detail = $error->getMessage();
