@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 LibreCode Coop and contributors
 # SPDX-License-Identifier: AGPL-3.0-or-later
-FROM php:8.5-fpm-alpine@sha256:75bbd8240bc8a991b0f8ddb2365f11937f93199972e3c9f7e32c63c7241f546b
+FROM php:8.5-fpm-alpine@sha256:4c2818074ec49f6abe46620f3965e0cb75bc3a5f2b417edd1aacaba6f091c40e
 RUN apk add --no-cache libcurl libsodium \
     && apk add --no-cache --virtual .mcp-build-deps curl-dev libsodium-dev \
     && docker-php-ext-install curl sodium \
