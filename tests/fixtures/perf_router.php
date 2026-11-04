@@ -39,6 +39,42 @@ if ($path === '/1/api/nfse/dps/readiness' || $path === '/1/api/nfse/dps/lookup')
     ]], JSON_THROW_ON_ERROR);
     exit;
 }
+// Reviewed fiscal responses expose metadata, never raw XML or WebDAV secrets.
+if (in_array($path, [
+    '/api/documents/7',
+    '/1/api/nfse/invoices/7/post-emission-status',
+    '/1/api/nfse/settings/artifacts',
+],true)) {
+    parse_str((string)parse_url($_SERVER['REQUEST_URI'] ?? '',PHP_URL_QUERY),$query);
+    if (($_SERVER['REQUEST_METHOD'] ?? '')!=='GET'
+        || ($query['company_id']??'')!=='1') {
+        http_response_code(403);
+        echo '{"error":"invalid_company"}';
+        exit;
+    }
+    if ($path==='/api/documents/7') {
+        echo '{"data":{"id":7,"company_id":1,"type":"invoice"}}';
+        exit;
+    }
+    if ($path==='/1/api/nfse/settings/artifacts') {
+        echo json_encode(['data'=>[
+            'configured'=>true,'host'=>'dav.example.invalid',
+            'username_configured'=>true,'password_configured'=>true,
+            'path_template'=>'nfse/{cnpj}/{year}',
+            'filename_template'=>'{chave_acesso}',
+            'store_xml'=>true,'store_pdf'=>false,
+        ]],JSON_THROW_ON_ERROR);
+        exit;
+    }
+    echo json_encode(['data'=>[
+        'status'=>'emitted','poll'=>false,
+        'artifacts'=>[
+            'xml'=>['ready'=>true,'download_url'=>'/1/api/nfse/receipts/5/artifacts/xml'],
+            'danfse'=>['ready'=>false,'download_url'=>null],
+        ],
+    ]],JSON_THROW_ON_ERROR);
+    exit;
+}
 // Synthetic NFS-e route uses the module's company-prefixed HTTP contract.
 if ($path === '/1/api/nfse/national-services') {
     parse_str((string) parse_url($_SERVER['REQUEST_URI'] ?? '',PHP_URL_QUERY),$query);

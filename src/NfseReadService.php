@@ -60,10 +60,15 @@ final class NfseReadService
 
         $value=$this->api->get($creds['email'],$creds['password'],$resolved['path'],$query);
         $this->validate($name,$company,$value);
+        $safe=ReadResponseGuard::redact($value);
+        if ($name==='api.nfse.settings.artifacts.show') {
+            // This reviewed field is a boolean presence flag, never a password.
+            $safe['data']['password_configured']=$value['data']['password_configured'];
+        }
         return [
             'route'=>$name,
             'company_id'=>$company,
-            'response'=>ReadResponseGuard::redact($value),
+            'response'=>$safe,
         ];
     }
 
@@ -94,25 +99,66 @@ final class NfseReadService
                 || !is_array($response['eligible_companies'] ?? null)) {
                 throw new RuntimeException('Malformed company profiles');
             }
+        } elseif ($route==='api.nfse.settings.artifacts.show') {
+            $data=$response['data'] ?? null;
+            $allowed=[
+                'configured','host','username_configured','password_configured',
+                'path_template','filename_template','store_xml','store_pdf',
+            ];
+            if (!is_array($data) || array_is_list($data)
+                || array_diff(array_keys($data),$allowed)!==[]
+                || !is_bool($data['configured'] ?? null)
+                || !is_bool($data['username_configured'] ?? null)
+                || !is_bool($data['password_configured'] ?? null)
+                || !is_bool($data['store_xml'] ?? null)
+                || !is_bool($data['store_pdf'] ?? null)
+                || !is_string($data['path_template'] ?? null)
+                || strlen($data['path_template'])>255
+                || !is_string($data['filename_template'] ?? null)
+                || strlen($data['filename_template'])>255
+                || !(($data['host'] ?? null)===null || (
+                    is_string($data['host']) && strlen($data['host'])<=253
+                    && preg_match('/[@\/\?#\x00-\x1F\x7F]/',$data['host'])!==1
+                ))) {
+                throw new RuntimeException('Unsafe WebDAV configuration response');
+            }
         } elseif (!is_array($response['data'] ?? null)) {
             throw new RuntimeException('Missing fiscal API data');
         }
         ReadResponseGuard::assertNestedCompany($response,$company);
-        $this->rejectEmbeddedArtifacts($response);
+        $this->rejectEmbeddedArtifacts(
+            $response,$route==='api.nfse.invoices.post-emission-status',
+        );
     }
 
-    private function rejectEmbeddedArtifacts(array $response, int $depth=0): void
-    {
+    private function rejectEmbeddedArtifacts(
+        array $response, bool $allowXmlStatusMetadata=false,
+        int $depth=0, string $parent='',
+    ): void {
         if ($depth>12) throw new RuntimeException('Fiscal response too deeply nested');
         foreach ($response as $key=>$value) {
-            if (is_string($key) && preg_match('/^(?:xml|authorized_xml|raw_xml|pfx|p12|private_key|pem)$/i',$key)) {
-                throw new RuntimeException('Unexpected embedded fiscal artifact');
+            if (is_string($key)
+                && preg_match('/^(?:xml|authorized_xml|raw_xml|pfx|p12|private_key|pem)$/i',$key)) {
+                $metadata=$allowXmlStatusMetadata && $key==='xml' && $parent==='artifacts'
+                    && is_array($value) && !array_is_list($value)
+                    && count($value)===2
+                    && array_diff(array_keys($value),['ready','download_url'])===[]
+                    && is_bool($value['ready'] ?? null)
+                    && array_key_exists('download_url',$value)
+                    && ($value['download_url']===null || (
+                        is_string($value['download_url']) && strlen($value['download_url'])<=2048
+                    ));
+                if (!$metadata) throw new RuntimeException('Unexpected embedded fiscal artifact');
             }
             if (is_string($value) &&
                 preg_match('/^\s*<\?xml\b|^\s*<(?:NFSe|DPS)\b/i',$value)) {
                 throw new RuntimeException('Unexpected raw fiscal XML');
             }
-            if (is_array($value)) $this->rejectEmbeddedArtifacts($value,$depth+1);
+            if (is_array($value)) {
+                $this->rejectEmbeddedArtifacts(
+                    $value,$allowXmlStatusMetadata,$depth+1,is_string($key)?$key:'',
+                );
+            }
         }
     }
 }

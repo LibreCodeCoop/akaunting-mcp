@@ -71,6 +71,9 @@ final class NfseReadCatalog
         'api.nfse.settings.tax-associations.index' => [
             'path'=>'/nfse/settings/tax-associations', 'permission'=>'read-nfse-settings','filters'=>[],
         ],
+        'api.nfse.settings.artifacts.show' => [
+            'path'=>'/nfse/settings/artifacts', 'permission'=>'read-nfse-settings','filters'=>[],
+        ],
         'api.nfse.settings.approximate-taxes.index' => [
             'path'=>'/nfse/settings/approximate-taxes', 'permission'=>'read-nfse-settings',
             'filters'=>['page','limit'],

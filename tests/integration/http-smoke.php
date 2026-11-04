@@ -147,6 +147,33 @@ requireCheck(($nfseRead['result']['isError']??true)===false
     && ($nfse['response']['data'][0]['code']??null)==='0107',
     'nfse_native_company_prefix_and_json_contract');
 
+$webdavRead=jsonMessage('/mcp',[
+    'jsonrpc'=>'2.0','id'=>65,'method'=>'tools/call',
+    'params'=>['name'=>'akaunting_api_read','arguments'=>[
+        'company_id'=>1,'route'=>'api.nfse.settings.artifacts.show',
+    ]],
+],$auth);
+$webdav=json_decode($webdavRead['result']['content'][0]['text'] ?? '{}',true,16,JSON_THROW_ON_ERROR);
+requireCheck(($webdavRead['result']['isError']??true)===false
+    && ($webdav['response']['data']['host']??null)==='dav.example.invalid'
+    && ($webdav['response']['data']['password_configured']??null)===true
+    && !array_key_exists('webdav_url',$webdav['response']['data']??[])
+    && !array_key_exists('webdav_password',$webdav['response']['data']??[]),
+    'nfse_webdav_safe_metadata_without_credentials');
+
+$fiscalStatus=jsonMessage('/mcp',[
+    'jsonrpc'=>'2.0','id'=>66,'method'=>'tools/call',
+    'params'=>['name'=>'akaunting_api_read','arguments'=>[
+        'company_id'=>1,'route'=>'api.nfse.invoices.post-emission-status',
+        'route_params'=>['invoice'=>7],
+    ]],
+],$auth);
+$fiscal=json_decode($fiscalStatus['result']['content'][0]['text'] ?? '{}',true,16,JSON_THROW_ON_ERROR);
+requireCheck(($fiscalStatus['result']['isError']??true)===false
+    && ($fiscal['response']['data']['status']??null)==='emitted'
+    && ($fiscal['response']['data']['artifacts']['xml']['ready']??null)===true,
+    'nfse_status_allows_metadata_without_releasing_xml');
+
 $nfseReadiness=jsonMessage('/mcp',[
     'jsonrpc'=>'2.0','id'=>63,'method'=>'tools/call',
     'params'=>['name'=>'akaunting_api_read','arguments'=>[

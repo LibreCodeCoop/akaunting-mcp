@@ -245,10 +245,11 @@ try {
         'Projecting fewer fields never bypasses tenant validation');
     $api->companyOverride=null;
     $apiRoutes=$tools->call($subject,'akaunting_api_routes',['company_id'=>1]);
-    test(($apiRoutes['count'] ?? 0) === 59
+    test(($apiRoutes['count'] ?? 0) === 60
         && in_array('api.employees.index',array_column($apiRoutes['registered_read_routes'],'route'),true)
-        && in_array('api.nfse.ledger.index',array_column($apiRoutes['registered_read_routes'],'route'),true),
-        'Catalog reads 40 Core plus 19 NFS-e reviewed JSON GET routes');
+        && in_array('api.nfse.ledger.index',array_column($apiRoutes['registered_read_routes'],'route'),true)
+        && in_array('api.nfse.settings.artifacts.show',array_column($apiRoutes['registered_read_routes'],'route'),true),
+        'Catalog reads 40 Core plus 20 NFS-e reviewed JSON GET routes');
     test(!in_array('api.documents.received',array_column($apiRoutes['registered_read_routes'],'route'),true)
         && !in_array('api.users.disable',array_column($apiRoutes['registered_read_routes'],'route'),true)
         && !in_array('api.nfse.read.configuration',array_column($apiRoutes['registered_read_routes'],'route'),true),
