@@ -2,7 +2,7 @@
 # SPDX-FileCopyrightText: 2026 LibreCode Coop and contributors
 # SPDX-License-Identifier: AGPL-3.0-or-later
 set -eu
-cd "$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)"
+cd "$(dirname -- "$0")/../.."
 umask 077
 private_dir=$(mktemp -d /tmp/akaunting-http-smoke.XXXXXX)
 upstream_pid=''
