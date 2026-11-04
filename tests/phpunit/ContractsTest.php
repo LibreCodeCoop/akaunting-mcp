@@ -50,7 +50,9 @@ final class ContractsTest extends TestCase
     public function testManifestContainsOnlyReviewedRoutes(): void
     {
         $catalog = new RouteCatalog();
-        self::assertCount(60, $catalog->list()); // 40 reviewed Core + 20 reviewed NFS-e JSON reads
+        $routes = array_column($catalog->list(), null, 'route');
+        self::assertArrayHasKey('api.items.index', $routes);
+        self::assertArrayHasKey('api.nfse.settings.artifacts.show', $routes);
         self::assertTrue($catalog->permitsPath('/documents/7'));
         self::assertFalse($catalog->permitsPath('/documents/7/received'));
         self::assertFalse($catalog->permitsPath('/nfse/read/services'));

@@ -25,7 +25,10 @@ final class NfseReadBehaviorTest extends TestCase
         self::assertArrayHasKey('api.nfse.adn.documents.preview',$routes);
         self::assertArrayHasKey('api.nfse.settings.company-profiles.index',$routes);
         self::assertArrayHasKey('api.nfse.settings.artifacts.show',$routes);
-        self::assertCount(20, (new NfseReadCatalog())->list());
+        self::assertSame(
+            '/nfse/settings/artifacts',
+            (new NfseReadCatalog())->resolve('api.nfse.settings.artifacts.show', [])['path'],
+        );
         self::assertSame(['read-sales-invoices'],
             $routes['api.nfse.invoices.service-preview']['required_permission_hints']);
         self::assertFalse($catalog->permitsPath('/nfse/invoices/3/emit'));

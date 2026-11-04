@@ -4,7 +4,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 -->
 # Read-only API coverage and extension policy
 
-**Current scope:** nine read tools plus three approval tools, with core Akaunting REST resources and 20 reviewed NFS-e module JSON GET routes. The NFS-e support is a consumer of the module's own public REST contracts, not a reason to create endpoints specifically for MCP.
+**Current scope:** reviewed Akaunting REST reads and selected NFS-e module JSON GET routes, together with a separately approved mutation workflow. The NFS-e support is a consumer of the module's own public REST contracts, not a reason to create endpoints specifically for MCP.
 
 ## Native API contract
 
