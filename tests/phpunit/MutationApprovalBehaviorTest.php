@@ -37,12 +37,16 @@ final class MutationApprovalBehaviorTest extends TestCase
             public int $writes=0;
             public string $name='Original member';
             public array $lastWrite=[];
+            public ?\Closure $onVerify=null;
 
             public function verify(string $email,string $password,int $companyId): void
             {
                 if ($email!=='member@example.invalid' || $password!=='correct-password'
                     || $companyId!==1) {
                     throw new RuntimeException('Synthetic identity not authorized');
+                }
+                if ($this->onVerify!==null) {
+                    ($this->onVerify)();
                 }
             }
             public function get(string $email,string $password,string $path,array $query=[]): array
@@ -143,6 +147,31 @@ final class MutationApprovalBehaviorTest extends TestCase
         } catch (RuntimeException) {
             self::assertSame(1,$this->api->writes);
         }
+    }
+
+    public function testExpiryDuringReauthenticationCannotExecuteTheApprovedWrite(): void
+    {
+        $proposal=$this->prepare();
+        $view=$this->approval->review($proposal['request_id']);
+        $key=hash('sha256',$proposal['request_id']);
+        // Simulate a slow upstream login: the ticket is valid on entry but
+        // expires before the atomic pending-to-executing transition.
+        $this->api->onVerify=function () use ($key): void {
+            $this->store->state(static function (array &$state) use ($key): void {
+                $state['approvals'][$key]['expires']=time()-1;
+            });
+        };
+        try {
+            $this->approval->decide($view['request_id'],$view['csrf'],$view['cookie'],
+                'approve','member@example.invalid','correct-password');
+            self::fail('Expired ticket was executed after reauthentication');
+        } catch (RuntimeException $exception) {
+            self::assertSame('Approval was already handled',$exception->getMessage());
+        } finally {
+            $this->api->onVerify=null;
+        }
+        self::assertSame(0,$this->api->writes);
+        // Expired entries may be evicted by the store on the next state access.
     }
 
     public function testRejectDoesNotRequirePasswordAndNeverWrites(): void
