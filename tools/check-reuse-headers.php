@@ -211,7 +211,7 @@ if (isset($_SERVER['SCRIPT_FILENAME']) && realpath($_SERVER['SCRIPT_FILENAME']) 
         $arguments = $_SERVER['argv'] ?? [];
         if (($arguments[1] ?? null) === '--self-test' && count($arguments) === 2) {
             if (reuseKind('vendor-bin/phpunit/composer.json') !== 'json'
-                || reuseKind('tests/run.php') !== 'php'
+                || reuseKind('tests/integration/HttpSmokeIntegrationTest.php') !== 'php'
                 || reuseLeadingHeader("<?php\n// SPDX-FileCopyrightText: Example\n// SPDX-License-Identifier: MIT\n", 'php') === '') {
                 throw new RuntimeException('SPDX checker self-test failed');
             }

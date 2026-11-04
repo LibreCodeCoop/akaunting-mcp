@@ -24,7 +24,11 @@ final class NfseReadBehaviorTest extends TestCase
         self::assertArrayHasKey('api.nfse.invoices.service-preview',$routes);
         self::assertArrayHasKey('api.nfse.adn.documents.preview',$routes);
         self::assertArrayHasKey('api.nfse.settings.company-profiles.index',$routes);
-        self::assertCount(19, (new NfseReadCatalog())->list());
+        self::assertArrayHasKey('api.nfse.settings.artifacts.show',$routes);
+        self::assertSame(
+            '/nfse/settings/artifacts',
+            (new NfseReadCatalog())->resolve('api.nfse.settings.artifacts.show', [])['path'],
+        );
         self::assertSame(['read-sales-invoices'],
             $routes['api.nfse.invoices.service-preview']['required_permission_hints']);
         self::assertFalse($catalog->permitsPath('/nfse/invoices/3/emit'));
@@ -98,6 +102,68 @@ final class NfseReadBehaviorTest extends TestCase
             });
             self::assertCount(1,$api->calls,'Unsafe request reached fiscal child route');
         }
+    }
+
+    public function testPostEmissionStatusAcceptsSafeXmlArtifactMetadataButRejectsRawXml(): void
+    {
+        $api=$this->fakeApi();
+        $api->fiscal=['data'=>[
+            'status'=>'emitted',
+            'poll'=>false,
+            'artifacts'=>[
+                'xml'=>['ready'=>true,'download_url'=>'/1/api/nfse/receipts/5/artifacts/xml'],
+                'danfse'=>['ready'=>false,'download_url'=>null],
+            ],
+        ]];
+        $result=(new ApiBrowser($api))->read($this->credentials(),1,[
+            'route'=>'api.nfse.invoices.post-emission-status',
+            'route_params'=>['invoice'=>7],
+        ]);
+        self::assertSame(true,$result['response']['data']['artifacts']['xml']['ready']);
+        self::assertSame('emitted',$result['response']['data']['status']);
+
+        $api->fiscal['data']['artifacts']['xml']='<NFSe>confidential synthetic fiscal payload</NFSe>';
+        $this->expectRejected(fn()=> (new ApiBrowser($api))->read($this->credentials(),1,[
+            'route'=>'api.nfse.invoices.post-emission-status',
+            'route_params'=>['invoice'=>7],
+        ]));
+
+        $api->fiscal['data']['artifacts']['xml']=['ready'=>true,'payload'=>'synthetic payload'];
+        $this->expectRejected(fn()=> (new ApiBrowser($api))->read($this->credentials(),1,[
+            'route'=>'api.nfse.invoices.post-emission-status',
+            'route_params'=>['invoice'=>7],
+        ]));
+    }
+
+    public function testWebDavSettingsMetadataIsReadableWithoutExposingCredentials(): void
+    {
+        $catalog=new NfseReadCatalog();
+        self::assertSame('/nfse/settings/artifacts',
+            $catalog->resolve('api.nfse.settings.artifacts.show',[])['path']);
+        $api=$this->fakeApi();
+        $api->fiscal=['data'=>[
+            'configured'=>true,
+            'host'=>'dav.example.invalid',
+            'username_configured'=>true,
+            'password_configured'=>true,
+            'path_template'=>'nfse/{cnpj}/{year}',
+            'filename_template'=>'{chave_acesso}',
+            'store_xml'=>true,
+            'store_pdf'=>false,
+        ]];
+
+        $result=(new ApiBrowser($api))->read($this->credentials(),1,[
+            'route'=>'api.nfse.settings.artifacts.show',
+        ]);
+        self::assertSame('dav.example.invalid',$result['response']['data']['host']);
+        self::assertTrue($result['response']['data']['password_configured']);
+        self::assertArrayNotHasKey('webdav_password',$result['response']['data']);
+        self::assertSame('/nfse/settings/artifacts',$api->calls[0]['path']);
+
+        $api->fiscal['data']['webdav_url']='https://user:password@dav.example.invalid/secret';
+        $this->expectRejected(fn()=> (new ApiBrowser($api))->read($this->credentials(),1,[
+            'route'=>'api.nfse.settings.artifacts.show',
+        ]));
     }
 
     public function testOfficialDpsReadCannotClaimTheNumberIsSafeToEmit(): void

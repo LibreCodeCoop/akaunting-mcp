@@ -2,7 +2,7 @@
 # SPDX-FileCopyrightText: 2026 LibreCode Coop and contributors
 # SPDX-License-Identifier: AGPL-3.0-or-later
 set -eu
-cd /app
+cd "$(dirname -- "$0")/../.."
 umask 077
 private_dir=$(mktemp -d /tmp/akaunting-http-smoke.XXXXXX)
 upstream_pid=''
@@ -32,4 +32,6 @@ upstream_pid=$!
 php -S 127.0.0.1:8876 tests/fixtures/mcp-router.php >"$private_dir/mcp.log" 2>&1 &
 mcp_pid=$!
 sleep 1
-php tests/integration/http-smoke.php
+php vendor-bin/phpunit/vendor/bin/phpunit \
+  --configuration phpunit.xml.dist --no-progress \
+  tests/integration/HttpSmokeIntegrationTest.php
