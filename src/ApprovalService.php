@@ -190,6 +190,7 @@ final class ApprovalService
         $this->api->verify($email,$password,(int)$entry['company_id']);
         $this->store->state(static function (array &$state) use ($key,$subject,$entry): void {
             if (($state['approvals'][$key]['status'] ?? null)!=='pending'
+                || ($state['approvals'][$key]['expires'] ?? 0)<=time()
                 || ($state['approvals'][$key]['subject'] ?? null)!==$subject
                 || ($state['approvals'][$key]['generation'] ?? null)!==$entry['generation']) {
                 throw new RuntimeException('Approval was already handled');
