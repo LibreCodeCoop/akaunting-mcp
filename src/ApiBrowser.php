@@ -36,6 +36,12 @@ final class ApiBrowser
 
     public function read(array $creds, int $company, array $args): array
     {
+        if (is_string($args['route'] ?? null) && str_starts_with($args['route'],'api.nfse.')) {
+            return (new NfseReadService($this->api))->read($creds,$company,$args);
+        }
+        if (array_key_exists('nfse_filters',$args)) {
+            throw new RuntimeException('NFS-e filters are not valid for core routes');
+        }
         // Validate before any upstream API call; apply only after tenant and
         // secret checks so projection cannot weaken authorization.
         $fields = RecordProjection::validate($args['fields'] ?? null);

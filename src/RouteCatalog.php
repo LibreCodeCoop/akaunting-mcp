@@ -50,18 +50,22 @@ final class RouteCatalog
 
     public function list(): array
     {
-        return array_values(array_map(static fn (array $route): array => [
+        $core=array_values(array_map(static fn (array $route): array => [
             'route'=>$route['name'],
             'uri'=>$route['uri'],
             'source'=>$route['module'] ? 'module' : 'core',
             'parameters'=>$route['params'],
             'required_permission_hints'=>$route['permissions'] ?? [],
         ], $this->routes));
+        return array_merge($core,(new NfseReadCatalog())->list());
     }
 
     /** @return array{path:string,route:array<string,mixed>} */
     public function resolve(string $name, array $params): array
     {
+        if (str_starts_with($name,'api.nfse.')) {
+            return (new NfseReadCatalog())->resolve($name,$params);
+        }
         $route=$this->routes[$name] ?? null;
         if ($route === null) {
             throw new RuntimeException('Read API route not registered');
@@ -97,6 +101,9 @@ final class RouteCatalog
 
     public function permitsPath(string $path): bool
     {
+        if (str_starts_with($path,'/nfse/')) {
+            return (new NfseReadCatalog())->permitsPath($path);
+        }
         foreach ($this->routes as $route) {
             $template=substr($route['uri'],3);
             $parts=preg_split('/(\{[a-z_]+\})/', $template,-1,PREG_SPLIT_DELIM_CAPTURE);
