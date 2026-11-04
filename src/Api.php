@@ -42,7 +42,15 @@ class Api
         if ($email === '' || $password === '') {
             throw new RuntimeException('Missing personal credentials');
         }
-        $url = $this->config->akauntingUrl.'/api'. $path;
+        // Akaunting modules register /{company_id}/api/nfse/*, whereas the
+        // Core registers /api/*. Keep the native tenant route path intact.
+        $modulePrefix='';
+        if (str_starts_with($path,'/nfse/')) {
+            $company=$query['company_id'] ?? null;
+            if (!is_int($company)) throw new RuntimeException('NFS-e company ID is required');
+            $modulePrefix='/'.self::companyId($company);
+        }
+        $url = $this->config->akauntingUrl.$modulePrefix.'/api'. $path;
         if ($query) {
             $url .= '?'.http_build_query($query, '', '&', PHP_QUERY_RFC3986);
         }

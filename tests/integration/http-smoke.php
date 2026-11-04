@@ -132,6 +132,54 @@ requireCheck(($nativeData['data'][0]['company_id'] ?? null) === 1
     && ($nativeData['data'][0]['name'] ?? null) === 'Synthetic category',
     'native_api_read_authorized');
 
+// NFS-e JSON reads keep native company-prefixed routing and reviewed names;
+// neither the agent nor an OAuth token can choose an arbitrary fiscal path.
+$nfseRead=jsonMessage('/mcp',[
+    'jsonrpc'=>'2.0','id'=>61,'method'=>'tools/call',
+    'params'=>['name'=>'akaunting_api_read','arguments'=>[
+        'company_id'=>1,'route'=>'api.nfse.national-services.index',
+        'nfse_filters'=>['lc116'=>'0107','limit'=>2],
+    ]],
+],$auth);
+$nfse=json_decode($nfseRead['result']['content'][0]['text'] ?? '{}',true,16,JSON_THROW_ON_ERROR);
+requireCheck(($nfseRead['result']['isError']??true)===false
+    && ($nfse['route']??null)==='api.nfse.national-services.index'
+    && ($nfse['response']['data'][0]['code']??null)==='0107',
+    'nfse_native_company_prefix_and_json_contract');
+
+$nfseReadiness=jsonMessage('/mcp',[
+    'jsonrpc'=>'2.0','id'=>63,'method'=>'tools/call',
+    'params'=>['name'=>'akaunting_api_read','arguments'=>[
+        'company_id'=>1,'route'=>'api.nfse.dps.readiness',
+    ]],
+],$auth);
+$nfseReady=json_decode($nfseReadiness['result']['content'][0]['text'] ?? '{}',true,16,JSON_THROW_ON_ERROR);
+requireCheck(($nfseReadiness['result']['isError']??true)===false
+    && ($nfseReady['response']['data']['mechanically_ready']??null)===false,
+    'nfse_dps_readiness_is_not_issuance_authorization');
+
+$nfseLookup=jsonMessage('/mcp',[
+    'jsonrpc'=>'2.0','id'=>64,'method'=>'tools/call',
+    'params'=>['name'=>'akaunting_api_read','arguments'=>[
+        'company_id'=>1,'route'=>'api.nfse.dps.lookup',
+        'nfse_filters'=>['number'=>'900000000000008'],
+    ]],
+],$auth);
+$lookup=json_decode($nfseLookup['result']['content'][0]['text'] ?? '{}',true,16,JSON_THROW_ON_ERROR);
+requireCheck(($nfseLookup['result']['isError']??true)===false
+    && ($lookup['response']['data']['official_state']??null)==='not_found'
+    && ($lookup['response']['data']['safe_to_emit']??null)===false,
+    'nfse_official_read_only_lookup_cannot_enable_post');
+$unsafeFiscal=jsonMessage('/mcp',[
+    'jsonrpc'=>'2.0','id'=>62,'method'=>'tools/call',
+    'params'=>['name'=>'akaunting_api_read','arguments'=>[
+        'company_id'=>1,'route'=>'api.nfse.invoices.emit',
+        'route_params'=>['invoice'=>7],
+    ]],
+],$auth);
+requireCheck(($unsafeFiscal['result']['isError']??false)===true,
+    'nfse_issuance_is_not_a_read_tool');
+
 // A model can propose a write, but the only executor is the issuer-host
 // browser form requiring independent reauthentication and explicit consent.
 $prepare = static fn(array $request): array => jsonMessage('/mcp', [

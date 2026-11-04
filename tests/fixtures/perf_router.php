@@ -15,6 +15,43 @@ if ($path === '/api/companies/1/owner') {
     http_response_code(200);
     exit;
 }
+// Official DPS fixture: read-only GET and status values only.
+if ($path === '/1/api/nfse/dps/readiness' || $path === '/1/api/nfse/dps/lookup') {
+    parse_str((string)parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_QUERY), $query);
+    if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'GET'
+        || ($query['company_id'] ?? '') !== '1') {
+        http_response_code(403); echo '{"error":"invalid_company"}'; exit;
+    }
+    if ($path === '/1/api/nfse/dps/lookup') {
+        if (($query['number'] ?? '') !== '900000000000008') {
+            http_response_code(422); echo '{"error":"invalid_number"}'; exit;
+        }
+        echo json_encode(['data'=>[
+            'official_state'=>'not_found', 'number'=>'900000000000008',
+            'safe_to_emit'=>false, 'exclusive_series_attested'=>false,
+        ]], JSON_THROW_ON_ERROR);
+        exit;
+    }
+    echo json_encode(['data'=>[
+        'company_id'=>1, 'mechanically_ready'=>false,
+        'external_reconciliation'=>'not_proven_by_this_endpoint',
+        'reasons'=>['series_inactive'],
+    ]], JSON_THROW_ON_ERROR);
+    exit;
+}
+// Synthetic NFS-e route uses the module's company-prefixed HTTP contract.
+if ($path === '/1/api/nfse/national-services') {
+    parse_str((string) parse_url($_SERVER['REQUEST_URI'] ?? '',PHP_URL_QUERY),$query);
+    if (($_SERVER['REQUEST_METHOD'] ?? '')!=='GET'
+        || ($query['company_id']??'')!=='1'
+        || ($query['lc116']??'')!=='0107') {
+        http_response_code(403);
+        echo '{"error":"invalid_tenant_or_filter"}';
+        exit;
+    }
+    echo json_encode(['data'=>[['code'=>'0107','description'=>'Synthetic NFS-e service']]],JSON_THROW_ON_ERROR);
+    exit;
+}
 if ($path==='/api/contacts/7' || $path==='/api/contacts') {
     $method=$_SERVER['REQUEST_METHOD'] ?? 'GET';
     $state=getenv('MCP_SMOKE_MUTATION_STATE') ?: '';

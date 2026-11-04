@@ -69,6 +69,19 @@ final class Toolset
                     'company_id'=>$company,
                     'route'=>['type'=>'string','maxLength'=>120,'description'=>'Exact name returned by akaunting_api_routes; e.g. api.departments.index or api.documents.transactions.show.'],
                     'route_params'=>['type'=>'object','description'=>'Route placeholder names to positive IDs; translations use locale/file strings.'],
+                    'nfse_filters'=>['type'=>'object','description'=>'Only for reviewed NFS-e JSON GET routes; allowed keys are listed by akaunting_api_routes.',
+                        'properties'=>[
+                            'page'=>['type'=>'integer','minimum'=>1,'maximum'=>10000],
+                            'limit'=>['type'=>'integer','minimum'=>1,'maximum'=>50],
+                            'report_page'=>['type'=>'integer','minimum'=>1,'maximum'=>10000],
+                            'include_preview'=>['type'=>'integer','enum'=>[0,1]],
+                            'status'=>['type'=>'string'], 'review_status'=>['type'=>'string'],
+                            'fiscal_role'=>['type'=>'string'], 'competence'=>['type'=>'string'],
+                            'from'=>['type'=>'string'], 'to'=>['type'=>'string'],
+                            'search'=>['type'=>'string','maxLength'=>200],
+                            'lc116'=>['type'=>'string'], 'q'=>['type'=>'string','maxLength'=>100],
+                            'number'=>['type'=>'string','pattern'=>'^[1-9][0-9]{0,14}$'],
+                        ],'additionalProperties'=>false],
                     'page'=>['type'=>'integer','minimum'=>1,'maximum'=>10000],
                     'limit'=>['type'=>'integer','minimum'=>1,'maximum'=>50],
                     'search'=>['type'=>'string','maxLength'=>200],
@@ -131,7 +144,7 @@ final class Toolset
                 'registered_api_read_routes'=>count((new RouteCatalog())->list()),
                 'route_discovery_tool'=>'akaunting_api_routes',
                 'read_tool'=>'akaunting_api_read',
-                'nfse_api'=>'not_registered_in_installed_akaunting_api',
+                'nfse_api'=>'reviewed_json_reads_only; native fiscal writes and binary downloads require separate approval and transport',
                 'user_audit'=>'company_scoped_roles_without_effective_permission_details'];
         }
         $company = ($name === 'akaunting_list_companies') ? $creds['company_id'] : ($args['company_id'] ?? null);
