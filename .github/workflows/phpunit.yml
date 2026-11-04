@@ -31,3 +31,5 @@ jobs:
         run: |
           php -d pcov.enabled=1 vendor-bin/phpunit/vendor/bin/phpunit             -c phpunit.xml.dist --no-progress --coverage-filter src             --coverage-clover "$RUNNER_TEMP/akaunting-coverage.xml"
           php tools/check-coverage.php "$RUNNER_TEMP/akaunting-coverage.xml" 77
+      - name: OAuth and MCP HTTP integration against loopback fixtures
+        run: sh tests/integration/http-smoke.sh

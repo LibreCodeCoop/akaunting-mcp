@@ -33,20 +33,14 @@ Tests and fixtures must use synthetic users, companies and records. Never run mu
 Run the following from the repository root:
 
 ~~~sh
+composer test
+sh tests/integration/http-smoke.sh
 docker build -t akaunting-mcp:ci .
-docker run --rm --network none \
-  -v "$PWD/tests:/app/tests:ro" -w /app \
-  --entrypoint php akaunting-mcp:ci tests/run.php
-docker run --rm --network none \
-  -v "$PWD/tests:/app/tests:ro" -w /app \
-  --entrypoint sh akaunting-mcp:ci tests/run_perf_connection.sh
-docker run --rm --network none \
-  -v "$PWD/tests:/app/tests:ro" -w /app \
-  --entrypoint sh akaunting-mcp:ci tests/integration/http-smoke.sh
 docker compose --env-file .env.example config --quiet
+bash tests/integration/docker-smoke.sh
 ~~~
 
-The synthetic tests cover read-only tool contracts, OAuth and PKCE, token revocation and rotation, company isolation, route restrictions, tool argument validation, response redaction and error handling. The local HTTP smoke uses a disposable loopback fixture in a network-disabled container; it does not contact an Akaunting deployment.
+PHPUnit covers read-only tool contracts, OAuth and PKCE, token revocation and rotation, company isolation, route restrictions, tool argument validation, response redaction and error handling. The HTTP integration tests also run under PHPUnit; the small shell wrapper only starts and stops disposable localhost fixtures in a private temporary directory. Neither suite contacts an Akaunting deployment.
 
 The independent workflows in [GitHub Actions](../.github/workflows/) check PHP lint, PHPUnit, PHPStan, PHP-CS-Fixer, Composer validation and audit, Docker smoke, DCO, Conventional Commits, ShellCheck, Actionlint, Zizmor, REUSE, public source scope and secrets. Use the pinned tooling from those workflows locally; do not replace the application runtime with Composer development packages. Do not assume a local test run means that hosted CI or the production integration has been approved.
 
@@ -61,7 +55,7 @@ runtime that has PCOV enabled, execute the same command used in
 
 This percentage **does not** include code exercised in child processes by
 the separate HTTP/cURL and Docker smoke suites. Do not confuse a line-level
-coverage percentage with complete behavioral assurance. All nine MCP tool
+coverage percentage with complete behavioral assurance. All supported MCP tool
 families, OAuth/PKCE/refresh/revocation, cross-company permissions, denied
 mutations, API read-only routing, Docker isolation, and CLI/Shell operations
 must continue to pass their synthetic acceptance tests before deployment.
@@ -74,20 +68,18 @@ layout or internal connection identities.
 
 | Observable behavior | Automated regression checks |
 | --- | --- |
-| OAuth authorization, PKCE, bearer audience and revocation | `AuthenticationBehaviorTest`, `tests/run.php`, `tests/integration/http-smoke.sh` |
+| OAuth authorization, PKCE, bearer audience and revocation | `AuthenticationBehaviorTest`, `HttpSmokeIntegrationTest` |
 | Production configuration and encrypted credential state | `ConfigurationBehaviorTest`, `AuthenticationBehaviorTest`, `OperationsBehaviorTest` |
-| All read and approval-preparation MCP tools, JSON-RPC and error redaction | `McpTransportBehaviorTest`, `tests/run.php`, `tests/integration/http-smoke.sh` |
+| All read and approval-preparation MCP tools, JSON-RPC and error redaction | `McpTransportBehaviorTest`, `HttpSmokeIntegrationTest` |
 | Tenant isolation, native and legacy route parity, nested relationships, fields and secrets | `ReadSafetyBehaviorTest`, `SpecializedReadBehaviorTest`, `ContractsTest` |
-| REST transport, status codes, redirects, compression and bounded bodies | `tests/run_perf_connection.sh`, `tests/integration/http-smoke.sh` |
+| REST transport, status codes, redirects, compression and bounded bodies | `OperationsBehaviorTest`, `HttpSmokeIntegrationTest` |
 | Key generation, revocation and private tunnel key entry | `OperationsBehaviorTest` with disposable users and filesystem |
 | Tunnel readiness and denial of unsafe startup | `OperationsBehaviorTest`, `tests/integration/docker-smoke.sh` |
 | Git commit policies, catalog generator, checksum verification, scope and SPDX | `ToolingTest`, `OperationsBehaviorTest`, REUSE, Actionlint and ShellCheck |
 | FPM/Nginx/OAuth edge networking and runtime packaging | `tests/integration/docker-smoke.sh` |
 | Synthetic performance analysis and coverage regression gate | `OperationsBehaviorTest`, `tools/check-coverage.php` |
 
-Do not delete tests solely because they are not counted in PHPUnit source-line
-coverage. Integration tests are executed as isolated PHP/cURL/Docker processes
-and deliberately make no contact with live financial data. A test failure in
+Do not infer HTTP or container safety from PHPUnit source coverage. The HTTP integration suite runs against localhost fixture processes; the Docker/Compose smoke validates infrastructure boundaries. Neither uses live financial data. A test failure in
 an authorization boundary must block deployment even when line coverage rises.
 
 ## Distribution and disk footprint
