@@ -87,6 +87,21 @@ final class NfseWriteTransportTest extends TestCase
         self::assertSame('synthetic_cancelled',$result['data']['data']['status']);
     }
 
+    public function testFiscalEventEvidencePostsApprovedJsonToTenantScopedApi(): void
+    {
+        $result=$this->api()->mutate(
+            'synthetic@example.invalid','synthetic-password','POST',
+            '/nfse/invoices/7/fiscal-event-evidence',1,[
+                'fiscal_group_key'=>'service:0107|tax:010701|mun:123|rate:5.00',
+                'taxable_event_date'=>'2026-11-01',
+                'source_reference'=>'Synthetic source document',
+                'acknowledge'=>true,
+            ],
+        );
+        self::assertSame(201,$result['http_status']);
+        self::assertSame('attested',$result['data']['status']);
+    }
+
     public function testUnknownFiscalPathCannotReachHttpTransport(): void
     {
         $this->expectException(RuntimeException::class);
