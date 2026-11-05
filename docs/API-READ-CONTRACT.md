@@ -2,7 +2,7 @@
 SPDX-FileCopyrightText: 2026 LibreCode Coop and contributors
 SPDX-License-Identifier: AGPL-3.0-or-later
 -->
-# Read-only API coverage and extension policy
+# API coverage and extension policy
 
 **Current scope:** reviewed Akaunting REST reads and selected NFS-e module JSON GET routes, together with a separately approved mutation workflow. The NFS-e support is a consumer of the module's own public REST contracts, not a reason to create endpoints specifically for MCP.
 
@@ -18,11 +18,11 @@ Company membership is verified for each selected company, followed by native Aka
 
 Reviewed native CRUD routes are prepared using exact named API routes and are executed only after independent browser approval. No model-exposed MCP tool performs a write. NFS-e's reviewed JSON reads are accessible by `akaunting_api_routes` and `akaunting_api_read` with exact names and `nfse_filters`; the MCP constructs the module's required `/{company_id}/api/nfse/...` path from a verified company ID. For invoice-scoped reads the MCP independently checks the parent native sales invoice before exposing fiscal details. Unexpected company IDs or raw fiscal XML in a JSON response fail closed. Other NFS-e JSON responses rely on the module's native company filtering and ACL, which must be covered by its own integration tests. The MCP does not grant any additional permission.
 
-NFS-e POST/PATCH/DELETE, XML/PDF binary transfers, government ADN distribution, and PFX uploads remain unavailable in the MCP until their distinct transport, state, authorization and explicit approval contracts are validated. In particular, fiscal writes cannot be considered safe while centralized DPS numbering and unified legal preflight are unresolved. Future fiscal APIs must be implemented for actual module consumers, **never solely for MCP**.
+A small set of NFS-e JSON mutations is explicitly reviewed in `src/NfseWriteCatalog.php`: updates to an existing fiscal profile, confirmed tax associations, sourced approximate taxes, and **single-invoice issuance/cancellation restricted to produção restrita**. These use the module's native API and the existing single-use browser approval; they do not create a separate fiscal pipeline. Before issuing, the MCP checks the company-owned invoice, active profile, DPS readiness and fiscal preview, then repeats the checks after approval. The module remains responsible for legal preflight, fiscal allocation and transmission. Certificate/PFX uploads, Vault secrets, XML/PDF transfers, production fiscal POSTs, reissue/substitution, bulk fiscal writes and government ADN distribution remain unavailable. See [NFS-e operations](NFSE-WRITES.md).
 
 ## New modules
 
-Before adding a route: validate that it is useful outside MCP, registered as a native API route, non-mutating, protected by native permissions, company-scoped, safe for recursive serialization and covered by synthetic tests with allowed and denied accounts. Keep the generic route catalog explicit; do not introduce a broad proxy.
+Before adding a read route: verify that it is useful outside MCP, native, non-mutating, permissioned, company-scoped, safe to serialize and covered by synthetic allowed/denied tests. A write route additionally needs an explicit field schema, target-state comparison, independent approval, idempotency/recovery analysis and negative authorization tests. Never add arbitrary URL proxying.
 
 See [security architecture](SECURITY.md) and [development and testing](DEVELOPMENT.md).
 

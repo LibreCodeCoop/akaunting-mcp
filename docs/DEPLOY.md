@@ -40,7 +40,7 @@ Edit the **local** .env.deploy file. Do not commit it or paste its contents into
 | MCP_RESOURCE_URI | Canonical tunnel resource URL; must match the tunnel ID |
 | MCP_PROXY_NETWORK | Name of the **existing** Docker proxy network when using the oauth-edge profile |
 
-Also review MCP_ALLOWED_HOSTS, MCP_OAUTH_EDGE_ALIAS, APP_UID and APP_GID for the deployment. Do not copy the example placeholders unchanged into a live configuration. The production resource must use the OpenAI tunnel resource shape validated in [src/Config.php](../src/Config.php). Do not guess a tunnel ID or OAuth callback.
+Also review MCP_ALLOWED_HOSTS, MCP_OAUTH_EDGE_ALIAS, APP_UID and APP_GID for the deployment. Keep `MCP_NFSE_FISCAL_WRITES_ENABLED=false` until the module's legal preflight and DPS authority have been verified; see [restricted fiscal operations](NFSE-WRITES.md). Do not copy the example placeholders unchanged into a live configuration. The production resource must use the OpenAI tunnel resource shape validated in [src/Config.php](../src/Config.php). Do not guess a tunnel ID or OAuth callback.
 
 ## 2. Provision private secret files
 
@@ -104,7 +104,7 @@ Use the profiles that match the chosen deployment; the base app and internal Ngi
 - Confirm the internal MCP endpoint is reachable only through the private tunnel.
 - Check that logs contain no passwords, OAuth codes, tokens, financial records or stack traces.
 
-Never use cloned real financial records, production mutations or administrative credentials as a shortcut for integration testing. Native reviewed record modifications require an authenticated, one-time browser approval per action. NFS-e actions and unrelated module endpoints remain unavailable.
+Never use cloned real financial records, production mutations or administrative credentials as a shortcut for integration testing. Native reviewed record modifications require an authenticated, one-time browser approval per action. Restricted NFS-e configuration proposals are available only for reviewed routes; fiscal issue/cancel remain disabled by default and require the additional readiness and deployment gate described in [NFS-e operations](NFSE-WRITES.md).
 
 ## Operation, updates and rollback
 

@@ -36,9 +36,12 @@ encrypted credentials. There is no shared cross-user response cache.
 - `src/OAuth.php`: code/PKCE, refresh, JWT, revocation and concurrency.
 - `public/oauth.php`: browser login, metadata, safe errors and HTTP headers.
 - `public/mcp.php` and `src/Mcp.php`: private HTTP and JSON-RPC tool transport.
-- `src/Api.php`: authenticated REST GET, TLS checks, redirect refusal, response cap.
+- `src/Api.php`: authenticated REST transport, TLS checks, redirect refusal and response caps.
 - `src/RouteCatalog.php` and `src/api-routes.json`: reviewed named GET route allowlist.
-- `src/ApiBrowser.php` and `src/Toolset.php`: authorization-aware read tools.
+- `src/ApiBrowser.php` and `src/Toolset.php`: authorization-aware reads and approval proposals.
+- `src/NfseReadCatalog.php`, `src/NfseReadService.php` and `src/NfseWriteCatalog.php`:
+  reviewed fiscal API contracts, safe response validation and sandbox-only fiscal write preflight.
+- `src/ApprovalService.php` and `src/WriteRouteCatalog.php`: frozen, single-use browser approvals.
 - `src/UserScopeFilter.php` and `src/SettingsScopeFilter.php`: special fail-closed
   projections for unsafe upstream listing endpoints.
 - `src/RecordProjection.php`: output-only field selection; never controls authorization.
