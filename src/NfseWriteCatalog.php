@@ -33,6 +33,10 @@ final class NfseWriteCatalog
             'method'=>'POST', 'path'=>'/nfse/settings/approximate-taxes',
             'permission'=>'update-nfse-settings',
         ],
+        'api.nfse.invoices.fiscal-event-evidence.store' => [
+            'method'=>'POST', 'path'=>'/nfse/invoices/{invoice}/fiscal-event-evidence',
+            'permission'=>'update-sales-invoices',
+        ],
         'api.nfse.invoices.emit' => [
             'method'=>'POST', 'path'=>'/nfse/invoices/{invoice}/emit',
             'permission'=>'update-sales-invoices',
@@ -62,7 +66,9 @@ final class NfseWriteCatalog
         $out=[];
         foreach (self::ROUTES as $name=>$spec) {
             preg_match_all('/\{([a-zA-Z]+)\}/', $spec['path'], $matches);
-            $fiscalCommand=str_starts_with($name,'api.nfse.invoices.');
+            $fiscalCommand=in_array($name,[
+                'api.nfse.invoices.emit','api.nfse.invoices.cancel',
+            ],true);
             $out[]=[
                 'route'=>$name, 'methods'=>[$spec['method']],
                 'uri'=>'{company_id}/api'.$spec['path'],
@@ -215,15 +221,28 @@ final class NfseWriteCatalog
             }
             return;
         }
+        if ($name==='api.nfse.invoices.fiscal-event-evidence.store') {
+            $this->only($body,[
+                'fiscal_group_key','taxable_event_date','source_reference','acknowledge',
+            ]);
+            if (!$this->validGroupKey($body['fiscal_group_key']??null)
+                || !$this->validDate($body['taxable_event_date']??null)
+                || !is_string($body['source_reference']??null)
+                || strlen(trim($body['source_reference']))<5
+                || strlen($body['source_reference'])>255
+                || preg_match('/[\x00-\x1F\x7F]/',$body['source_reference'])===1
+                || ($body['acknowledge']??null)!==true) {
+                throw new RuntimeException('Invalid fiscal event attestation');
+            }
+            return;
+        }
         if ($name==='api.nfse.invoices.emit') {
             $this->only($body,['nfse_force_ajax','nfse_fiscal_group_key']);
             if (($body['nfse_force_ajax']??null)!==true) {
                 throw new RuntimeException('Explicit JSON fiscal emission required');
             }
             if (isset($body['nfse_fiscal_group_key'])
-                && (!is_string($body['nfse_fiscal_group_key'])
-                    || strlen($body['nfse_fiscal_group_key'])>160
-                    || preg_match('/^[a-zA-Z0-9:_-]+$/D',$body['nfse_fiscal_group_key'])!==1)) {
+                && !$this->validGroupKey($body['nfse_fiscal_group_key'])) {
                 throw new RuntimeException('Invalid fiscal group key');
             }
             return;
@@ -297,6 +316,23 @@ final class NfseWriteCatalog
                 'route'=>'api.nfse.settings.approximate-taxes.index',
                 'nfse_filters'=>['page'=>1,'limit'=>50],
             ])['response'];
+        } elseif ($route==='api.nfse.invoices.fiscal-event-evidence.store') {
+            $invoiceId=$params['invoice']??null;
+            if (!is_int($invoiceId)) throw new RuntimeException('Invoice ID required');
+            $overview=$reader->read($creds,$company,[
+                'route'=>'api.nfse.invoices.fiscal-assessment',
+                'route_params'=>['invoice'=>$invoiceId],
+            ])['response'];
+            $found=false;
+            foreach ($overview['data'] as $group) {
+                if (is_array($group)
+                    && ($group['group_key']??null)===($body['fiscal_group_key']??null)) {
+                    $found=true;
+                    break;
+                }
+            }
+            if (!$found) throw new RuntimeException('Fiscal group is no longer current');
+            $snapshot['fiscal_event_overview']=$overview;
         } elseif (str_starts_with($route,'api.nfse.invoices.')) {
             $sandbox=filter_var(
                 $profile['fiscal_parameters']['sandbox_mode']??null,
@@ -365,6 +401,12 @@ final class NfseWriteCatalog
         if (array_diff(array_keys($body),$allowed)!==[]) {
             throw new RuntimeException('Unapproved NFS-e mutation field');
         }
+    }
+
+    private function validGroupKey(mixed $value): bool
+    {
+        return is_string($value) && strlen($value)>0 && strlen($value)<=191
+            && preg_match('/^[a-zA-Z0-9:_|.\-]+$/D',$value)===1;
     }
 
     private function validDate(mixed $value): bool

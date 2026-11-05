@@ -8,6 +8,8 @@ namespace AkauntingMcp\Tests;
 use AkauntingMcp\Api;
 use AkauntingMcp\ApprovalService;
 use AkauntingMcp\Config;
+use AkauntingMcp\NfseReadCatalog;
+use AkauntingMcp\NfseReadService;
 use AkauntingMcp\NfseWriteCatalog;
 use AkauntingMcp\Store;
 use AkauntingMcp\WriteRouteCatalog;
@@ -46,6 +48,8 @@ final class NfseWriteBehaviorTest extends TestCase
             public int $receiptId=0;
             public int $invoiceCompany=1;
             public int $profileVersion=1;
+            public string $groupKey='service:0107|tax:010701|mun:123|rate:5.00';
+            public ?string $eventDate=null;
 
             public function verify(string $email,string $password,int $companyId): void
             {
@@ -80,6 +84,17 @@ final class NfseWriteBehaviorTest extends TestCase
                         'receipt_id'=>$this->receiptId>0?$this->receiptId:null,
                         'artifacts'=>['danfse'=>['ready'=>false,'download_url'=>null]],
                     ]];
+                }
+                if ($path==='/nfse/invoices/7/fiscal-assessment') {
+                    return [
+                        'data'=>[[
+                            'group_key'=>$this->groupKey,'service_code'=>'0107',
+                            'amount'=>'100.00','taxable_event_date'=>$this->eventDate,
+                            'evidence_kind'=>$this->eventDate===null?null:'operator_attestation',
+                            'diagnostics'=>[],
+                        ]],
+                        'scope'=>'rtc_calendar_preview','final_dps_checked'=>false,
+                    ];
                 }
                 if ($path==='/nfse/invoices/7/service-preview') {
                     return ['fiscal_groups'=>[],'fiscal_profile_validation'=>[
@@ -352,6 +367,114 @@ final class NfseWriteBehaviorTest extends TestCase
         } finally {
             self::assertSame(0,$this->api->writes);
         }
+    }
+
+    public function testFiscalEventReadIsExplicitlyOnlyCalendarPreview(): void
+    {
+        $routes=array_column((new NfseReadCatalog())->list(),'route');
+        self::assertContains('api.nfse.invoices.fiscal-assessment',$routes);
+        $response=(new NfseReadService($this->api))->read(
+            $this->store->load($this->subject),1,[
+                'route'=>'api.nfse.invoices.fiscal-assessment',
+                'route_params'=>['invoice'=>7],
+            ],
+        )['response'];
+        self::assertSame('rtc_calendar_preview',$response['scope']);
+        self::assertFalse($response['final_dps_checked']);
+        self::assertSame($this->api->groupKey,$response['data'][0]['group_key']);
+    }
+
+    public function testFiscalEventAttestationRequiresApprovalButNotTransmissionGate(): void
+    {
+        putenv('MCP_NFSE_FISCAL_WRITES_ENABLED');
+        $routes=array_column((new NfseWriteCatalog())->list(),null,'route');
+        self::assertTrue($routes['api.nfse.invoices.fiscal-event-evidence.store']['enabled']);
+        self::assertFalse($routes['api.nfse.invoices.emit']['enabled']);
+        $body=[
+            'fiscal_group_key'=>$this->api->groupKey,
+            'taxable_event_date'=>'2026-11-01',
+            'source_reference'=>'Signed synthetic service acceptance document',
+            'acknowledge'=>true,
+        ];
+        $proposal=$this->prepare(
+            'api.nfse.invoices.fiscal-event-evidence.store','POST',['invoice'=>7],$body,
+        );
+        self::assertSame('awaiting_human_approval',$proposal['status']);
+        self::assertSame(0,$this->api->writes);
+        self::assertSame('completed',$this->approve($proposal)['status']);
+        self::assertSame('/nfse/invoices/7/fiscal-event-evidence',$this->api->lastWrite['path']);
+        self::assertSame('POST',$this->api->lastWrite['method']);
+        self::assertSame($body,$this->api->lastWrite['body']);
+        self::assertArrayNotHasKey('company_id',$this->api->lastWrite['body']);
+    }
+
+    public function testFiscalEventAttestationRejectsUnprovenOrCrossCompanyData(): void
+    {
+        $body=[
+            'fiscal_group_key'=>$this->api->groupKey,
+            'taxable_event_date'=>'2026-11-01',
+            'source_reference'=>'Signed synthetic service acceptance document',
+            'acknowledge'=>true,
+        ];
+        foreach ([
+            ['fiscal_group_key'=>'service:missing|tax:000000|rate:5.00'],
+            ['fiscal_group_key'=>'service:0107/../../vault'],
+            ['taxable_event_date'=>'2026-02-30'],
+            ['source_reference'=>'none'],
+            ['acknowledge'=>false],
+            ['pfx_password'=>'forbidden'],
+        ] as $override) {
+            try {
+                $this->prepare('api.nfse.invoices.fiscal-event-evidence.store','POST',
+                    ['invoice'=>7],[...$body,...$override]);
+                self::fail('Unreviewed fiscal event attestation was accepted');
+            } catch (RuntimeException) {
+                self::assertSame(0,$this->api->writes);
+            }
+        }
+        $foreignCompany=2;
+        $this->api->invoiceCompany=$foreignCompany;
+        $this->expectException(RuntimeException::class);
+        $this->prepare('api.nfse.invoices.fiscal-event-evidence.store','POST',
+            ['invoice'=>7],$body);
+    }
+
+    public function testFiscalEventChangeDuringApprovalPreventsStaleAttestation(): void
+    {
+        $proposal=$this->prepare(
+            'api.nfse.invoices.fiscal-event-evidence.store','POST',['invoice'=>7],[
+                'fiscal_group_key'=>$this->api->groupKey,
+                'taxable_event_date'=>'2026-11-01',
+                'source_reference'=>'Synthetic independently reviewed event date',
+                'acknowledge'=>true,
+            ],
+        );
+        $this->api->eventDate='2026-10-31';
+        $this->expectException(RuntimeException::class);
+        try {
+            $this->approve($proposal);
+        } finally {
+            self::assertSame(0,$this->api->writes);
+            self::assertSame('outcome_unconfirmed',
+                $this->approval->status($this->subject,$proposal['request_id'])['status']);
+        }
+    }
+
+    public function testPersistedFiscalGroupKeyAcceptsPipeAndDecimalRate(): void
+    {
+        (new NfseWriteCatalog())->validate(
+            'api.nfse.invoices.emit',[
+                'nfse_force_ajax'=>true,
+                'nfse_fiscal_group_key'=>$this->api->groupKey,
+            ],1,['invoice'=>7],
+        );
+        $this->expectException(RuntimeException::class);
+        (new NfseWriteCatalog())->validate(
+            'api.nfse.invoices.emit',[
+                'nfse_force_ajax'=>true,
+                'nfse_fiscal_group_key'=>'service:0107/../../vault',
+            ],1,['invoice'=>7],
+        );
     }
 
     public function testMcpCannotEnableProductionOrAutomaticIssuance(): void

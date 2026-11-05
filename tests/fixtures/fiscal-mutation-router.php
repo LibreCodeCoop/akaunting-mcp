@@ -18,6 +18,13 @@ if ($path==='/1/api/nfse/settings/company-profiles/1' && $method==='PATCH'
     echo '{"data":{"status":"synthetic_updated"}}';
     exit;
 }
+if ($path==='/1/api/nfse/invoices/7/fiscal-event-evidence' && $method==='POST'
+    && ($body['fiscal_group_key']??null)==='service:0107|tax:010701|mun:123|rate:5.00'
+    && ($body['acknowledge']??null)===true) {
+    http_response_code(201);
+    echo '{"status":"attested"}';
+    exit;
+}
 if ($path==='/1/api/nfse/invoices/7' && $method==='DELETE'
     && ($body['nfse_receipt_id']??null)===12
     && ($body['cancel_reason']??null)==='9') {

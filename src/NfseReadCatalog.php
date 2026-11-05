@@ -24,6 +24,10 @@ final class NfseReadCatalog
             'path'=>'/nfse/national-services', 'permission'=>'read-nfse-settings',
             'filters'=>['lc116','q','limit'],
         ],
+        'api.nfse.invoices.fiscal-assessment' => [
+            'path'=>'/nfse/invoices/{invoice}/fiscal-assessment',
+            'permission'=>'read-sales-invoices', 'filters'=>[],
+        ],
         'api.nfse.invoices.service-preview' => [
             'path'=>'/nfse/invoices/{invoice}/service-preview', 'permission'=>'read-sales-invoices', 'filters'=>[],
         ],
