@@ -89,6 +89,13 @@ final class NfseReadService
                 || ($data['external_reconciliation'] ?? null)!=='not_proven_by_this_endpoint') {
                 throw new RuntimeException('Unsafe DPS readiness response');
             }
+        } elseif ($route==='api.nfse.invoices.fiscal-assessment') {
+            if (($response['scope']??null)!=='rtc_calendar_preview'
+                || ($response['final_dps_checked']??null)!==false
+                || !is_array($response['data']??null)
+                || !array_is_list($response['data'])) {
+                throw new RuntimeException('Unsafe fiscal event preview');
+            }
         } elseif ($route==='api.nfse.invoices.service-preview') {
             if (!is_array($response['fiscal_groups'] ?? null)
                 || !is_array($response['fiscal_profile_validation'] ?? null)) {
