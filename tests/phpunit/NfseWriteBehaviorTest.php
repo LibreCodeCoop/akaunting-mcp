@@ -330,7 +330,8 @@ final class NfseWriteBehaviorTest extends TestCase
             self::assertSame(0,$this->api->writes);
         }
         $this->api->sandbox=true;
-        $this->api->invoiceCompany=2;
+        $foreignCompany=2;
+        $this->api->invoiceCompany=$foreignCompany;
         $this->expectException(RuntimeException::class);
         $this->prepare('api.nfse.invoices.emit','POST',['invoice'=>7],[
             'nfse_force_ajax'=>true,
