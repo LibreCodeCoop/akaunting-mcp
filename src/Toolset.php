@@ -98,7 +98,7 @@ final class Toolset
         unset($tool);
         $writeRoutes = [
             ['name'=>'akaunting_mutation_routes',
-                'description'=>'List the 57 reviewed native create/update/delete API routes and their methods. Listing does not authorize any changes.',
+                'description'=>'List reviewed native and restricted NFS-e API mutations. Every change requires independent browser approval; fiscal issuance and cancellation are sandbox-only.',
                 'inputSchema'=>['type'=>'object','properties'=>['company_id'=>$company], 'required'=>['company_id']]],
             ['name'=>'akaunting_prepare_mutation',
                 'description'=>'PREPARE ONLY: display an exact proposed Akaunting change and create a short-lived browser approval link. Does NOT change financial records. Each subsequent change requires separate human review, reauthentication and consent in the independent browser.',
@@ -144,7 +144,7 @@ final class Toolset
                 'registered_api_read_routes'=>count((new RouteCatalog())->list()),
                 'route_discovery_tool'=>'akaunting_api_routes',
                 'read_tool'=>'akaunting_api_read',
-                'nfse_api'=>'reviewed_json_reads_only; native fiscal writes and binary downloads require separate approval and transport',
+                'nfse_api'=>'reviewed_json_reads_and_browser_approved_configuration; fiscal_emit_cancel_sandbox_only; certificate_upload_not_supported',
                 'user_audit'=>'company_scoped_roles_without_effective_permission_details'];
         }
         $company = ($name === 'akaunting_list_companies') ? $creds['company_id'] : ($args['company_id'] ?? null);

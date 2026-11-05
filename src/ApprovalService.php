@@ -47,6 +47,11 @@ final class ApprovalService
             throw new RuntimeException('Invalid mutation plan');
         }
         $route=$this->routes->resolve($name,$method,$params);
+        $fiscal=str_starts_with($name,'api.nfse.');
+        if ($fiscal) {
+            if ($recordType!==null) throw new RuntimeException('Fiscal record type is not applicable');
+            (new NfseWriteCatalog())->validate($name,$body,$company,$params);
+        }
         if ($recordType!==null && (!is_string($recordType)
             || !preg_match('/^[a-z][a-z0-9_-]{0,49}$/D',$recordType))) {
             throw new RuntimeException('Invalid record type');
@@ -68,7 +73,7 @@ final class ApprovalService
         }
         // The query always selects the authorized company; the body must be
         // consistent with the query, including during create operations.
-        $body['company_id']=$company;
+        if (!$fiscal) $body['company_id']=$company;
         if ($typeSensitive && isset($body['type']) && $body['type']!==$recordType) {
             throw new RuntimeException('Record type differs from selected authorization context');
         }
@@ -76,7 +81,7 @@ final class ApprovalService
             if (!isset($body['type'])) $body['type']=$recordType;
         }
         $this->validateBody($body,$company);
-        $original=$this->target($creds,$company,$name,$params,$recordType);
+        $original=$this->target($creds,$company,$name,$params,$recordType,$body);
         $plan=[
             'route'=>$name,'method'=>$method,'path'=>$route['path'],
             'route_params'=>$params,'body'=>$body,'record_type'=>$recordType,
@@ -182,8 +187,11 @@ final class ApprovalService
             throw new RuntimeException('Linked Akaunting session has changed');
         }
         $plan=$this->store->openPlan($entry['sealed']);
-        if ($plan['method']==='DELETE' && $confirmation!=='EXCLUIR') {
-            throw new RuntimeException('Deletion requires explicit confirmation phrase');
+        if ($plan['method']==='DELETE') {
+            $phrase=str_starts_with($plan['route'],'api.nfse.')?'CANCELAR':'EXCLUIR';
+            if ($confirmation!==$phrase) {
+                throw new RuntimeException('Destructive operation requires explicit confirmation phrase');
+            }
         }
         // Reauthentication must use *user-entered* credentials, not the stored
         // API password. An agent with MCP access cannot authorize its own write.
@@ -204,7 +212,7 @@ final class ApprovalService
         try {
             $this->api->verify($creds['email'],$creds['password'],(int)$entry['company_id']);
             $current=$this->target($creds,(int)$entry['company_id'],
-                $plan['route'],$plan['route_params'],$plan['record_type']);
+                $plan['route'],$plan['route_params'],$plan['record_type'],$plan['body']);
             if ($current!==$plan['target_digest']) {
                 throw new RuntimeException('Target changed after user reviewed mutation');
             }
@@ -257,8 +265,14 @@ final class ApprovalService
     }
 
     /** Protect the target against cross-company writes and changes after approval. */
-    private function target(array $creds, int $company, string $route, array $params, ?string $type): ?string
-    {
+    private function target(
+        array $creds, int $company, string $route, array $params, ?string $type, array $body=[]
+    ): ?string {
+        if (str_starts_with($route,'api.nfse.')) {
+            return (new NfseWriteCatalog())->snapshot(
+                $this->api,$creds,$company,$route,$params,$body
+            );
+        }
         if ($params===[]) return null;
         $resource=explode('.',$route)[1] ?? '';
         if ($resource==='companies') {
