@@ -1,0 +1,5 @@
+# SPDX-FileCopyrightText: 2026 LibreCode Coop and contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Historical synthetic test property assignment was a false positive for generic-api-key.
+# Exact fingerprint only; all other findings remain blocking.
+ab6a357554b38e93b13e0bef240a0e0332a7522a:tests/phpunit/NfseWriteBehaviorTest.php:generic-api-key:333

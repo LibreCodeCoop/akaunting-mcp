@@ -127,7 +127,14 @@ try {
         $action=$h($issuerPath.'/approve');
         $csrf=$h($review['csrf']);
         $id=$h($review['request_id']);
-        $risk=$summary['destructive'] ? 'Esta exclusão pode ser irreversível.' : 'A alteração só será executada após sua autorização.';
+        $isFiscal=str_starts_with($summary['route'],'api.nfse.');
+        $risk=$isFiscal && $summary['destructive']
+            ? 'Este comando cancela uma NFS-e na SEFIN de produção restrita; não exclui a fatura.'
+            : ($summary['destructive'] ? 'Esta exclusão pode ser irreversível.'
+                : 'A alteração só será executada após sua autorização.');
+        if ($isFiscal && !$summary['destructive']) {
+            $risk.=' Emissão e cancelamento fiscais via MCP são restritos à produção restrita.';
+        }
         header('Content-Type: text/html; charset=utf-8');
         echo '<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">';
         echo '<title>Autorizar alteração no Akaunting</title>';
@@ -153,7 +160,8 @@ try {
         echo '<label for="email">Seu e-mail do Akaunting</label><input id="email" type="email" name="email" required autocomplete="username" maxlength="254">';
         echo '<label for="password">Senha do Akaunting (reconfirmação obrigatória)</label><input id="password" type="password" name="password" required autocomplete="current-password">';
         if ($summary['destructive']) {
-            echo '<label for="confirmation">Digite EXCLUIR para confirmar</label><input id="confirmation" name="confirmation" type="text" required pattern="EXCLUIR" autocomplete="off">';
+            $phrase=$isFiscal?'CANCELAR':'EXCLUIR';
+            echo '<label for="confirmation">Digite '.$phrase.' para confirmar</label><input id="confirmation" name="confirmation" type="text" required pattern="'.$phrase.'" autocomplete="off">';
         }
         echo '<button type="submit" class="confirm">Autorizar e executar esta operação</button></form>';
         echo '<form method="post" action="'.$action.'"><input type="hidden" name="request" value="'.$id.'">';

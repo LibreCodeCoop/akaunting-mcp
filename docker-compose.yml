@@ -16,6 +16,7 @@ services:
       MCP_DATA_DIR: /app/var
       MCP_ALLOWED_HOSTS: ${MCP_ALLOWED_HOSTS:-nginx,127.0.0.1,localhost}
       MCP_ALLOW_SEPARATE_ISSUER_HOST: ${MCP_ALLOW_SEPARATE_ISSUER_HOST:-false}
+      MCP_NFSE_FISCAL_WRITES_ENABLED: ${MCP_NFSE_FISCAL_WRITES_ENABLED:-false}
     secrets: [mcp_token_key]
     volumes:
       - mcp_state:/app/var

@@ -48,18 +48,22 @@ final class WriteRouteCatalog
 
     public function list(): array
     {
-        return array_values(array_map(static fn(array $r): array => [
+        $core=array_values(array_map(static fn(array $r): array => [
             'route'=>$r['name'], 'methods'=>$r['methods'],
             'uri'=>$r['uri'], 'parameters'=>$r['params'],
             'source'=>$r['module']?'module':'core',
             'required_permission_hints'=>$r['permissions']??[],
             'human_approval'=>'required_for_every_request',
         ], $this->routes));
+        return array_merge($core,(new NfseWriteCatalog())->list());
     }
 
     /** @return array{path:string,method:string,route:array<string,mixed>} */
     public function resolve(string $name, string $method, array $params): array
     {
+        if (str_starts_with($name,'api.nfse.')) {
+            return (new NfseWriteCatalog())->resolve($name,$method,$params);
+        }
         $route=$this->routes[$name] ?? null;
         if ($route === null || !in_array($method,$route['methods'],true)) {
             throw new RuntimeException('Mutating route not registered');
@@ -83,6 +87,9 @@ final class WriteRouteCatalog
 
     public function permits(string $method, string $path): bool
     {
+        if (str_starts_with($path,'/nfse/')) {
+            return (new NfseWriteCatalog())->permits($method,$path);
+        }
         foreach ($this->routes as $route) {
             if (!in_array($method,$route['methods'],true)) continue;
             $pattern=preg_replace('/\\\{[a-z_]+\\\}/','[1-9][0-9]{0,9}',preg_quote(substr($route['uri'],3),'~'));

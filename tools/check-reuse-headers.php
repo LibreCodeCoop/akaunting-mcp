@@ -32,7 +32,7 @@ function reuseKind(string $file): string
             return 'hash';
         }
     }
-    return in_array($name, ['Dockerfile', '.gitignore', '.dockerignore', '.env.example'], true)
+    return in_array($name, ['Dockerfile', '.gitignore', '.gitleaksignore', '.dockerignore', '.env.example'], true)
         ? 'hash' : 'unknown';
 }
 

@@ -156,7 +156,10 @@ class Api
             JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR);
         if (strlen($payload) > 32768) throw new RuntimeException('Mutation request too large');
 
-        $url = $this->config->akauntingUrl.'/api'.$path.'?'.http_build_query(
+        // Fiscal module routes are tenant-prefixed, unlike the Core API.
+        // Keep the company in both the path and query for the native guard.
+        $modulePrefix=str_starts_with($path,'/nfse/')?'/'.$companyId:'';
+        $url = $this->config->akauntingUrl.$modulePrefix.'/api'.$path.'?'.http_build_query(
             ['company_id'=>$companyId], '', '&', PHP_QUERY_RFC3986
         );
         $handle = curl_init();

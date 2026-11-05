@@ -18,6 +18,7 @@ const PUBLIC_DOCUMENTS = [
     'docs/DEPLOY.md',
     'docs/DEVELOPMENT.md',
     'docs/LICENSING.md',
+    'docs/NFSE-WRITES.md',
     'docs/SECURITY.md',
 ];
 const PUBLIC_GITHUB = [

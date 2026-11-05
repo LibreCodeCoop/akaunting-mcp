@@ -20,7 +20,7 @@ The MCP provides read tools and a separate mutation-approval workflow: route dis
 
 Core resource categories include companies, dashboards, items, contacts, documents, accounts, reconciliations, transactions, transfers, reports, categories, currencies and taxes. Optional Akaunting modules may provide additional categories after their native APIs and permissions have been reviewed. A route being registered does not mean every user is authorized to call it.
 
-**Coverage and limitations:** The catalog permits reviewed native Akaunting read routes and NFS-e JSON resources for catalogs, settings metadata, fiscal history, the ledger, closing, ADN review and bulk status. The MCP uses their existing authenticated fiscal APIs and requires the selected company; it does not introduce module-only routes or fiscal rules. NFS-e issue/cancel/reissue/substitute, binary XML/PDF download, certificate upload, and government-backed ADN distribution are **not** exposed through MCP. Those transports and fiscal writes require separate acceptance, including DPS numbering and legal preflight safeguards. Each deployed MCP/module version must be verified before claiming endpoint availability. A write approval never bypasses native ACLs.
+**Coverage and limitations:** The catalog permits reviewed native Akaunting reads and NFS-e JSON resources for settings, fiscal history, the ledger, closing, ADN review and bulk status. The MCP can also prepare company-scoped fiscal-parameter updates, explicit tax associations, sourced approximate taxes, and **single-note issuance/cancellation in produção restrita**, all requiring independent browser approval. It uses the module's own REST API and never implements a separate fiscal issuer. Production fiscal issuance, certificate upload, Vault secret changes, XML/PDF download, reissue/substitution, bulk writes and government-backed ADN distribution remain unavailable through MCP. The installed module, DPS authority and fiscal preflight must be verified before any fiscal transmission. See [NFS-e configuration and operations](docs/NFSE-WRITES.md).
 
 ## Getting started
 
@@ -45,7 +45,8 @@ Contracting LibreCode is optional for using or adapting the MCP source. Professi
 - [Installation, deployment, upgrades and rollback](docs/DEPLOY.md)
 - [Connect ChatGPT using OAuth and a private tunnel](docs/CONNECTING-CHATGPT.md)
 - [Architecture and trust boundaries](docs/ARCHITECTURE.md)
-- [Read-only API coverage and extension rules](docs/API-READ-CONTRACT.md)
+- [API coverage and extension rules](docs/API-READ-CONTRACT.md)
+- [NFS-e configuration and approved fiscal operations](docs/NFSE-WRITES.md)
 - [Security design](docs/SECURITY.md) and [private vulnerability reporting](SECURITY.md)
 - [Development, tests, CI, benchmarking and publication checks](docs/DEVELOPMENT.md)
 - [Licensing and third-party rights](docs/LICENSING.md)
