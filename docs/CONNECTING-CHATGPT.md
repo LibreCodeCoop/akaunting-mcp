@@ -15,6 +15,8 @@ This guide covers **connecting a deployed MCP** to ChatGPT. For infrastructure p
 5. Connect ChatGPT using the supported **private tunnel** method and the registered client and scope. The server advertises the OAuth scope mcp:read. Complete the browser login with an individual Akaunting account assigned to the intended company.
 6. Test akaunting_whoami before accessing any business record. Validate one small authorized read and denial of an unassigned company or unauthorized resource using synthetic test accounts.
 
+When upgrading the MCP server with new tools or updated input schemas, refresh the existing ChatGPT workspace app's action catalog and explicitly enable the reviewed new actions before testing them in a new conversation. Redeploying the service or tunnel does **not** automatically update the previously approved ChatGPT tool snapshot. Keep the independently authenticated browser approval requirement for all mutation proposals.
+
 The [non-secret configuration example](../.env.example) illustrates the required variable names. Example callback and tunnel values are placeholders, **not universal configuration values**.
 
 ## Authentication behavior
