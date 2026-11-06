@@ -45,6 +45,10 @@ final class NfseWriteCatalog
             'method'=>'POST', 'path'=>'/nfse/invoices/{invoice}/reemit',
             'permission'=>'update-sales-invoices',
         ],
+        'api.nfse.invoices.substitute' => [
+            'method'=>'POST', 'path'=>'/nfse/invoices/{invoice}/substitute',
+            'permission'=>'update-sales-invoices',
+        ],
         'api.nfse.invoices.cancel' => [
             'method'=>'DELETE', 'path'=>'/nfse/invoices/{invoice}',
             'permission'=>'update-sales-invoices',
@@ -72,7 +76,7 @@ final class NfseWriteCatalog
             preg_match_all('/\{([a-zA-Z]+)\}/', $spec['path'], $matches);
             $fiscalCommand=in_array($name,[
                 'api.nfse.invoices.emit','api.nfse.invoices.reemit',
-                'api.nfse.invoices.cancel',
+                'api.nfse.invoices.substitute','api.nfse.invoices.cancel',
             ],true);
             $out[]=[
                 'route'=>$name, 'methods'=>[$spec['method']],
@@ -261,6 +265,24 @@ final class NfseWriteCatalog
             }
             return;
         }
+        if ($name==='api.nfse.invoices.substitute') {
+            $this->only($body,[
+                'nfse_substitution_receipt_id','nfse_substitution_reason',
+                'nfse_substitution_description','nfse_force_ajax',
+            ]);
+            $reason=$body['nfse_substitution_reason']??null;
+            $description=$body['nfse_substitution_description']??null;
+            if (!is_int($body['nfse_substitution_receipt_id']??null)
+                || $body['nfse_substitution_receipt_id']<=0
+                || !in_array($reason,['01','02','03','04','05','99'],true)
+                || !is_string($description)
+                || strlen(trim($description))<15 || strlen($description)>255
+                || preg_match('/[\x00-\x1F\x7F]/',$description)===1
+                || ($body['nfse_force_ajax']??null)!==true) {
+                throw new RuntimeException('Invalid explicit NFS-e substitution request');
+            }
+            return;
+        }
         $this->only($body,[
             'nfse_receipt_id','cancel_reason','cancel_justification','nfse_force_ajax',
         ]);
@@ -376,14 +398,18 @@ final class NfseWriteCatalog
             $snapshot['fiscal_status']=$status;
             if (in_array($route,[
                 'api.nfse.invoices.emit','api.nfse.invoices.reemit',
+                'api.nfse.invoices.substitute',
             ],true)) {
                 if ($route==='api.nfse.invoices.emit') {
                     if (($status['receipt_id']??null)!==null) {
                         throw new RuntimeException('Existing fiscal receipt requires explicit recovery or reemission');
                     }
                 } else {
-                    if (($status['receipt_id']??null)!==($body['nfse_receipt_id']??null)) {
-                        throw new RuntimeException('Fiscal receipt changed before reemission');
+                    $substitute=$route==='api.nfse.invoices.substitute';
+                    $receiptField=$substitute?'nfse_substitution_receipt_id':'nfse_receipt_id';
+                    $requiredStatus=$substitute?'emitted':'cancelled';
+                    if (($status['receipt_id']??null)!==($body[$receiptField]??null)) {
+                        throw new RuntimeException('Fiscal receipt changed before proposed transition');
                     }
                     $number=$status['nfse_number']??null;
                     if (!is_string($number) || trim($number)==='' || strlen($number)>150) {
@@ -392,22 +418,22 @@ final class NfseWriteCatalog
                     $ledger=$reader->read($creds,$company,[
                         'route'=>'api.nfse.ledger.index',
                         'nfse_filters'=>[
-                            'search'=>$number,'status'=>'cancelled','page'=>1,'limit'=>50,
+                            'search'=>$number,'status'=>$requiredStatus,'page'=>1,'limit'=>50,
                         ],
                     ])['response'];
                     $matching=array_values(array_filter($ledger['data']??[],
                         static fn (mixed $receipt): bool => is_array($receipt)
-                            && ($receipt['id']??null)===$body['nfse_receipt_id']
+                            && ($receipt['id']??null)===$body[$receiptField]
                             && ($receipt['invoice_id']??null)===$invoiceId
                             && ($receipt['nfse_number']??null)===$number
-                            && ($receipt['status']??null)==='cancelled'
+                            && ($receipt['status']??null)===$requiredStatus
                     ));
                     if (count($matching)!==1) {
-                        throw new RuntimeException('Current cancelled fiscal receipt not confirmed');
+                        throw new RuntimeException('Current fiscal receipt state not confirmed');
                     }
-                    $snapshot['cancelled_receipt']=[
-                        'id'=>$body['nfse_receipt_id'],'invoice_id'=>$invoiceId,
-                        'number'=>$number,'status'=>'cancelled',
+                    $snapshot['referenced_receipt']=[
+                        'id'=>$body[$receiptField],'invoice_id'=>$invoiceId,
+                        'number'=>$number,'status'=>$requiredStatus,
                     ];
                 }
                 $readiness=$reader->read($creds,$company,[
@@ -425,8 +451,8 @@ final class NfseWriteCatalog
                     throw new RuntimeException('Invoice fiscal profile is not ready');
                 }
                 if (($preview['requires_split']??false)===true) {
-                    if ($route==='api.nfse.invoices.reemit') {
-                        throw new RuntimeException('Reemission of split fiscal groups is unsupported');
+                    if ($route!=='api.nfse.invoices.emit') {
+                        throw new RuntimeException('Transition of split fiscal groups is unsupported');
                     }
                     $selected=$body['nfse_fiscal_group_key']??null;
                     $keys=array_column($preview['fiscal_groups']??[],'key');
