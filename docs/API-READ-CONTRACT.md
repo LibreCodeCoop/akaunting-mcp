@@ -9,11 +9,11 @@ catalogs, see [API-to-MCP parity audit](API-PARITY.md). Unclassified route drift
 fails CI; explicitly listed pending routes remain unavailable until their
 transport, input/output contracts and authorization tests are implemented.
 
-**Current scope:** reviewed Akaunting REST reads, reviewed Field Studio metadata/values/audit routes and selected NFS-e module JSON GET routes, together with a separately approved mutation workflow. The module integrations consume native API contracts rather than implementing new endpoints specifically for MCP.
+**Current scope:** reviewed Akaunting REST reads, Field Studio metadata/values/audit routes, selected NFS-e JSON GET routes and two explicitly reviewed read-only NFS-e POST operations, together with a separately approved mutation workflow. The module integrations consume native API contracts rather than implementing new endpoints specifically for MCP.
 
 ## Native API contract
 
-`akaunting_resources` reports registered resource categories and route counts. `akaunting_api_routes` lists reviewed registered safe GET routes and their permission hints. `akaunting_api_read` accepts **exact route names and typed parameters**, not arbitrary HTTP paths or hosts.
+`akaunting_resources` reports registered resource categories and route counts. `akaunting_api_routes` lists reviewed safe GET routes and the specifically verified non-mutating POST operations, with method and permission hints. `akaunting_api_read` accepts **exact route names and typed parameters**, not arbitrary HTTP paths or hosts.
 
 The core catalog is generated from the target application's real API registration using `bin/generate-api-catalog.php` and versioned as `src/api-routes.json`. NFS-e's reviewed JSON GET operations are separately allowlisted in `src/NfseReadCatalog.php`, matching `LibreCodeCoop/akaunting-nfse` API route registration. Review both after an Akaunting or module upgrade; never auto-include arbitrary module endpoints. GET routes with side effects, raw XML/PDF downloads, and live government-backed ADN distribution are excluded.
 
@@ -23,7 +23,23 @@ Company membership is verified for each selected company, followed by native Aka
 
 Reviewed native CRUD routes are prepared using exact named API routes and are executed only after independent browser approval. No model-exposed MCP tool performs a write. NFS-e's reviewed JSON reads are accessible by `akaunting_api_routes` and `akaunting_api_read` with exact names and `nfse_filters`; the MCP constructs the module's required `/{company_id}/api/nfse/...` path from a verified company ID. For invoice-scoped reads the MCP independently checks the parent native sales invoice before exposing fiscal details. Unexpected company IDs or raw fiscal XML in a JSON response fail closed. Other NFS-e JSON responses rely on the module's native company filtering and ACL, which must be covered by its own integration tests. The MCP does not grant any additional permission.
 
-A small set of NFS-e JSON mutations is explicitly reviewed in `src/NfseWriteCatalog.php`: updates to an existing fiscal profile, confirmed tax associations, sourced approximate taxes, operator-approved taxable-event attestations, and **single-invoice issuance, cancellation, reemission and substitution restricted to produção restrita**. These use the module's native API and the existing single-use browser approval; they do not create a separate fiscal pipeline. Before issuing, the MCP checks the company-owned invoice, active profile, DPS readiness and fiscal preview, then repeats the checks after approval. The module remains responsible for legal preflight, fiscal allocation and transmission. Certificate/PFX uploads, Vault secrets, XML/PDF transfers, production fiscal POSTs, bulk fiscal writes and government ADN distribution remain unavailable. See [NFS-e operations](NFSE-WRITES.md).
+A small set of NFS-e JSON mutations is explicitly reviewed in `src/NfseWriteCatalog.php`: updates to an existing fiscal profile, confirmed tax associations, sourced approximate taxes, operator-approved taxable-event attestations, and **single-invoice issuance, cancellation, reemission and substitution restricted to produção restrita**. These use the module's native API and the existing single-use browser approval; they do not create a separate fiscal pipeline. Before issuing, the MCP checks the company-owned invoice, active profile, DPS readiness and fiscal preview, then repeats the checks after approval. The module remains responsible for legal preflight, fiscal allocation and transmission. Certificate/PFX uploads, Vault secret changes, XML/PDF transfers, production emission/cancellation/bulk dispatch and government ADN distribution remain unavailable. A reviewed sandbox-only bulk dispatch, current-receipt refresh and explicitly justified monotonic DPS advance use individual browser approval. See [NFS-e operations](NFSE-WRITES.md).
+
+## Non-mutating NFS-e POST reads
+
+Two reviewed native POST endpoints perform only a safe computation:
+`api.nfse.settings.vault.diagnostics` (a read-only Vault capability probe)
+and `api.nfse.bulk.plan` (a fiscal emission queue preview). The MCP accepts
+a bounded `post_body` object only for these two names, verifies the method,
+tenant, result shape and redaction, and returns JSON immediately without
+asking for financial write approval. This is not a generic POST proxy.
+
+The native `api.nfse.dps.advance`, `api.nfse.invoices.refresh`, and
+`api.nfse.bulk.dispatch` endpoints are separately available through
+`akaunting_prepare_mutation`, with exact typed payloads, snapshot rechecks
+and personal browser approval. Only bulk dispatch can enqueue new NFS-e
+work; it remains restricted to produção restrita. Refresh and DPS advance
+do not emit invoices.
 
 ## Field Studio API contracts
 
