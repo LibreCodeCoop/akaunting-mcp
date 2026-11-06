@@ -41,6 +41,10 @@ final class NfseWriteCatalog
             'method'=>'POST', 'path'=>'/nfse/invoices/{invoice}/emit',
             'permission'=>'update-sales-invoices',
         ],
+        'api.nfse.invoices.reemit' => [
+            'method'=>'POST', 'path'=>'/nfse/invoices/{invoice}/reemit',
+            'permission'=>'update-sales-invoices',
+        ],
         'api.nfse.invoices.cancel' => [
             'method'=>'DELETE', 'path'=>'/nfse/invoices/{invoice}',
             'permission'=>'update-sales-invoices',
@@ -67,7 +71,8 @@ final class NfseWriteCatalog
         foreach (self::ROUTES as $name=>$spec) {
             preg_match_all('/\{([a-zA-Z]+)\}/', $spec['path'], $matches);
             $fiscalCommand=in_array($name,[
-                'api.nfse.invoices.emit','api.nfse.invoices.cancel',
+                'api.nfse.invoices.emit','api.nfse.invoices.reemit',
+                'api.nfse.invoices.cancel',
             ],true);
             $out[]=[
                 'route'=>$name, 'methods'=>[$spec['method']],
@@ -247,6 +252,15 @@ final class NfseWriteCatalog
             }
             return;
         }
+        if ($name==='api.nfse.invoices.reemit') {
+            $this->only($body,['nfse_receipt_id','nfse_force_ajax']);
+            if (!is_int($body['nfse_receipt_id']??null)
+                || $body['nfse_receipt_id']<=0
+                || ($body['nfse_force_ajax']??null)!==true) {
+                throw new RuntimeException('Explicit reemission of current cancelled receipt required');
+            }
+            return;
+        }
         $this->only($body,[
             'nfse_receipt_id','cancel_reason','cancel_justification','nfse_force_ajax',
         ]);
@@ -360,9 +374,41 @@ final class NfseWriteCatalog
             if (!is_array($status)) throw new RuntimeException('Fiscal status unavailable');
             $snapshot['invoice']=$invoice;
             $snapshot['fiscal_status']=$status;
-            if ($route==='api.nfse.invoices.emit') {
-                if (($status['receipt_id']??null)!==null) {
-                    throw new RuntimeException('Existing fiscal receipt requires explicit recovery or reemission');
+            if (in_array($route,[
+                'api.nfse.invoices.emit','api.nfse.invoices.reemit',
+            ],true)) {
+                if ($route==='api.nfse.invoices.emit') {
+                    if (($status['receipt_id']??null)!==null) {
+                        throw new RuntimeException('Existing fiscal receipt requires explicit recovery or reemission');
+                    }
+                } else {
+                    if (($status['receipt_id']??null)!==($body['nfse_receipt_id']??null)) {
+                        throw new RuntimeException('Fiscal receipt changed before reemission');
+                    }
+                    $number=$status['nfse_number']??null;
+                    if (!is_string($number) || trim($number)==='' || strlen($number)>150) {
+                        throw new RuntimeException('Current fiscal receipt number unavailable');
+                    }
+                    $ledger=$reader->read($creds,$company,[
+                        'route'=>'api.nfse.ledger.index',
+                        'nfse_filters'=>[
+                            'search'=>$number,'status'=>'cancelled','page'=>1,'limit'=>50,
+                        ],
+                    ])['response'];
+                    $matching=array_values(array_filter($ledger['data']??[],
+                        static fn (mixed $receipt): bool => is_array($receipt)
+                            && ($receipt['id']??null)===$body['nfse_receipt_id']
+                            && ($receipt['invoice_id']??null)===$invoiceId
+                            && ($receipt['nfse_number']??null)===$number
+                            && ($receipt['status']??null)==='cancelled'
+                    ));
+                    if (count($matching)!==1) {
+                        throw new RuntimeException('Current cancelled fiscal receipt not confirmed');
+                    }
+                    $snapshot['cancelled_receipt']=[
+                        'id'=>$body['nfse_receipt_id'],'invoice_id'=>$invoiceId,
+                        'number'=>$number,'status'=>'cancelled',
+                    ];
                 }
                 $readiness=$reader->read($creds,$company,[
                     'route'=>'api.nfse.dps.readiness',
@@ -379,6 +425,9 @@ final class NfseWriteCatalog
                     throw new RuntimeException('Invoice fiscal profile is not ready');
                 }
                 if (($preview['requires_split']??false)===true) {
+                    if ($route==='api.nfse.invoices.reemit') {
+                        throw new RuntimeException('Reemission of split fiscal groups is unsupported');
+                    }
                     $selected=$body['nfse_fiscal_group_key']??null;
                     $keys=array_column($preview['fiscal_groups']??[],'key');
                     if (!is_string($selected) || !in_array($selected,$keys,true)) {
