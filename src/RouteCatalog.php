@@ -57,7 +57,9 @@ final class RouteCatalog
             'parameters'=>$route['params'],
             'required_permission_hints'=>$route['permissions'] ?? [],
         ], $this->routes));
-        return array_merge($core,(new NfseReadCatalog())->list());
+        return array_merge(
+            $core,(new NfseReadCatalog())->list(),(new FieldStudioCatalog())->listRead()
+        );
     }
 
     /** @return array{path:string,route:array<string,mixed>} */
@@ -65,6 +67,9 @@ final class RouteCatalog
     {
         if (str_starts_with($name,'api.nfse.')) {
             return (new NfseReadCatalog())->resolve($name,$params);
+        }
+        if (str_starts_with($name,'api.field-studio.')) {
+            return (new FieldStudioCatalog())->resolveRead($name,$params);
         }
         $route=$this->routes[$name] ?? null;
         if ($route === null) {
@@ -103,6 +108,9 @@ final class RouteCatalog
     {
         if (str_starts_with($path,'/nfse/')) {
             return (new NfseReadCatalog())->permitsPath($path);
+        }
+        if (str_starts_with($path,'/v1/field-studio/')) {
+            return (new FieldStudioCatalog())->permitsRead($path);
         }
         foreach ($this->routes as $route) {
             $template=substr($route['uri'],3);
