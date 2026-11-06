@@ -72,14 +72,6 @@
     "reason": "Imported fiscal bill draft needs typed input, company isolation, and human review."
   },
   {
-    "route": "api.nfse.bulk.dispatch",
-    "reason": "Bulk issuance requires bounded batch approval, durable recovery, and idempotency."
-  },
-  {
-    "route": "api.nfse.bulk.plan",
-    "reason": "Bulk preview uses a POST and requires a confirmed non-mutating contract."
-  },
-  {
     "route": "api.nfse.certificates.inspect",
     "reason": "Certificate inspection accepts sensitive file input, needing a secure browser handoff."
   },
@@ -90,14 +82,6 @@
   {
     "route": "api.nfse.closing.ibs-cbs-evidence",
     "reason": "Tax evidence export returns a file and requires a protected binary transport."
-  },
-  {
-    "route": "api.nfse.dps.advance",
-    "reason": "Fiscal sequence advancement needs authority and concurrency checks with approval."
-  },
-  {
-    "route": "api.nfse.invoices.refresh",
-    "reason": "Fiscal recovery is state-changing and requires a receipt-bound approval contract."
   },
   {
     "route": "api.nfse.receipts.artifacts.download",
@@ -118,10 +102,6 @@
   {
     "route": "api.nfse.settings.company-profiles.store",
     "reason": "Company profile creation needs tenant and tax identity validation."
-  },
-  {
-    "route": "api.nfse.settings.vault.diagnostics",
-    "reason": "Vault diagnostics can touch external credentials and need bounded result handling."
   },
   {
     "route": "api.nfse.settings.vault.update",

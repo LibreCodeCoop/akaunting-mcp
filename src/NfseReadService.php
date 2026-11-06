@@ -36,6 +36,33 @@ final class NfseReadService
             throw new RuntimeException('Invalid NFS-e parameters');
         }
 
+        $safePost=new NfseReadOnlyPostCatalog();
+        if ($safePost->contains($name)) {
+            if ($params!==[] || $filters!==[]) {
+                throw new RuntimeException('Read-only POST accepts no route or query parameters');
+            }
+            $body=$args['post_body']??[];
+            if (!is_array($body)) throw new RuntimeException('Invalid reviewed POST body');
+            $safePost->validateBody($name,$body);
+            $path=$safePost->resolve($name,[]);
+            $result=$this->api->postReadOnly(
+                $creds['email'],$creds['password'],$path,$company,$body
+            );
+            $value=$result['data']??null;
+            if (!is_array($value)) throw new RuntimeException('Invalid read-only POST response');
+            $this->validate($name,$company,$value);
+            $safe=ReadResponseGuard::redact($value);
+            if ($name==='api.nfse.settings.vault.diagnostics') {
+                // Reviewed capability flags are strictly boolean, not certificate material.
+                $safe['capabilities']=$value['capabilities'];
+            }
+            return [
+                'route'=>$name,'company_id'=>$company,'response'=>$safe,
+            ];
+        }
+        if (array_key_exists('post_body',$args)) {
+            throw new RuntimeException('POST body is only for reviewed read-only NFS-e operations');
+        }
         $catalog=new NfseReadCatalog();
         $resolved=$catalog->resolve($name,$params);
         $query=$catalog->query($name,$filters);
@@ -75,7 +102,40 @@ final class NfseReadService
     /** @param array<string,mixed> $response */
     private function validate(string $route, int $company, array $response): void
     {
-        if ($route==='api.nfse.dps.lookup') {
+        if ($route==='api.nfse.settings.vault.diagnostics') {
+            $capabilities=$response['capabilities']??null;
+            if (!in_array($response['state']??null,['operational','failed','unconfigured','unverified'],true)
+                || !in_array($response['reason']??null,[
+                    'verified','not_checked','missing_configuration',
+                    'configuration_unreadable','invalid_endpoint','invalid_mount',
+                    'server_unavailable','authentication_failed','kv_v2_unavailable',
+                    'permission_check_failed','insufficient_capabilities','network_failure',
+                ],true)
+                || !is_array($capabilities) || array_is_list($capabilities)
+                || count($capabilities)!==5) {
+                throw new RuntimeException('Unsafe Vault diagnostic response');
+            }
+            foreach ($capabilities as $key=>$value) {
+                if (!is_string($key)
+                    || !in_array($key,['network','authentication','kv_v2','certificate_read','certificate_write'],true)
+                    || !is_bool($value)) {
+                    throw new RuntimeException('Unsafe Vault capability metadata');
+                }
+            }
+        } elseif ($route==='api.nfse.bulk.plan') {
+            $data=$response['data']??null;
+            if (!is_array($data) || array_is_list($data)
+                || array_diff(array_keys($data),[
+                    'queued','blocked','already_issued','not_found_or_forbidden',
+                ])!==[]) {
+                throw new RuntimeException('Unsafe fiscal bulk preview');
+            }
+            foreach (['queued','blocked','already_issued','not_found_or_forbidden'] as $field) {
+                if (!is_array($data[$field]??null) || !array_is_list($data[$field])) {
+                    throw new RuntimeException('Malformed fiscal bulk preview');
+                }
+            }
+        } elseif ($route==='api.nfse.dps.lookup') {
             $data=$response['data'] ?? null;
             if (!is_array($data) || !in_array($data['official_state'] ?? null,
                 ['found','not_found','inconclusive'],true)

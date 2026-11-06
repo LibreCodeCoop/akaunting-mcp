@@ -58,7 +58,8 @@ final class RouteCatalog
             'required_permission_hints'=>$route['permissions'] ?? [],
         ], $this->routes));
         return array_merge(
-            $core,(new NfseReadCatalog())->list(),(new FieldStudioCatalog())->listRead()
+            $core,(new NfseReadCatalog())->list(),
+            (new NfseReadOnlyPostCatalog())->list(),(new FieldStudioCatalog())->listRead()
         );
     }
 
@@ -66,6 +67,10 @@ final class RouteCatalog
     public function resolve(string $name, array $params): array
     {
         if (str_starts_with($name,'api.nfse.')) {
+            $safePost=new NfseReadOnlyPostCatalog();
+            if ($safePost->contains($name)) {
+                return ['path'=>$safePost->resolve($name,$params),'route'=>['method'=>'POST']];
+            }
             return (new NfseReadCatalog())->resolve($name,$params);
         }
         if (str_starts_with($name,'api.field-studio.')) {

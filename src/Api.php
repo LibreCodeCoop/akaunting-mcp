@@ -140,17 +140,33 @@ class Api
     }
 
     /**
-     * Native write with independently approved request parameters. A new cURL
-     * handle avoids cross-method reuse: a POST can never turn a later GET into
-     * a mutation. The API path must be from the reviewed write catalog.
+     * Native write with independently approved request parameters.
+     * The verified write catalog must permit the exact method and path.
      */
     public function mutate(
         string $email, string $password, string $method, string $path, int $companyId, array $body
     ): array {
-        if ($email==='' || $password==='') throw new RuntimeException('Missing personal credentials');
         if (!(new WriteRouteCatalog())->permits($method,$path)) {
             throw new RuntimeException('Unregistered API mutation');
         }
+        return $this->sendJson($email,$password,$method,$path,$companyId,$body);
+    }
+
+    /** Only two reviewed native read-only POSTs: fiscal bulk preview and Vault diagnosis. */
+    public function postReadOnly(
+        string $email,string $password,string $path,int $companyId,array $body
+    ): array {
+        if (!(new NfseReadOnlyPostCatalog())->permitsPath($path)) {
+            throw new RuntimeException('Unregistered read-only POST');
+        }
+        return $this->sendJson($email,$password,'POST',$path,$companyId,$body);
+    }
+
+    /** Fresh cURL connection isolates each JSON POST/PUT/PATCH/DELETE from GET. */
+    private function sendJson(
+        string $email,string $password,string $method,string $path,int $companyId,array $body
+    ): array {
+        if ($email==='' || $password==='') throw new RuntimeException('Missing personal credentials');
         self::companyId($companyId);
         $payload = json_encode($body === [] ? new \stdClass() : $body,
             JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR);

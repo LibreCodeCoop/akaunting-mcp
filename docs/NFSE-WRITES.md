@@ -23,6 +23,9 @@ The following NFS-e operations are available when the matching module API is dep
 
 | Route | Method | Purpose |
 | --- | --- | --- |
+| `api.nfse.dps.advance` | POST | Explicitly advance the shared DPS counter with its expected next number, justification and personal approval; never allocate/emit a note |
+| `api.nfse.bulk.dispatch` | POST | Submit a reviewed batch of 1–100 existing invoices to the native emission queue **only in produção restrita**; no immediate HTTP transmission |
+| `api.nfse.invoices.refresh` | POST | Reconcile the state of the current fiscal receipt with the government API; requires the current receipt ID and separate approval |
 | `api.nfse.settings.company-profiles.update` | PATCH | Update non-secret fiscal parameters for the selected existing profile |
 | `api.nfse.settings.tax-associations.store` | POST | Confirm the fiscal identity and role of an existing Akaunting tax |
 | `api.nfse.settings.tax-associations.revise` | PATCH | Record a dated revision of a confirmed tax association |
@@ -36,6 +39,51 @@ The following NFS-e operations are available when the matching module API is dep
 The profile PATCH accepts `fiscal_parameters` only, never `pfx_file`, `pfx_password` or arbitrary nested fields. It cannot activate the production gateway (`sandbox_mode=false`) or automatic issuance (`emission_policy=emit_on_send`); these transitions require separate operational review outside the MCP. Tax association confirmation requires an existing tax ID, legal provenance, effective dates and `acknowledge=true`. Approximate tax rates are decimal **strings**, not floating-point numbers.
 
 Each prepared operation must be reviewed in the HTTPS approval page by the **same personal Akaunting user**, who reauthenticates and explicitly authorizes it. A cancellation requires typing `CANCELAR`; a native Core deletion continues to require `EXCLUIR`. The approved request is single-use and expires after ten minutes. Verify the result with `akaunting_mutation_status` and a separate read.
+
+## Read-only operational POSTs
+
+Some native fiscal APIs use HTTP `POST` for a **read-only computation**.
+The MCP exposes only two such reviewed operations through
+`akaunting_api_read` and an optional `post_body`, not through the write
+approval mechanism:
+
+- `api.nfse.settings.vault.diagnostics`: omit `post_body` or send an
+  empty JSON object. Returns operational status and strictly boolean
+  capability flags, never Vault credentials or certificate content.
+- `api.nfse.bulk.plan`: send `post_body: {"invoice_ids":[7,8]}` using
+  actual, distinct invoice IDs (1–100). Returns the native queue preview,
+  blocked invoices, already issued invoices and inaccessible IDs. It **does
+  not** enqueue or transmit any invoice.
+
+The MCP validates these operations' paths, methods, bodies, JSON responses
+and company boundaries. An ordinary API `POST` is **not** a read; the
+exception is limited to these verified services. This also means that a
+preview never counts as authorization for a later bulk dispatch.
+
+## Reviewed operational mutations
+
+- `api.nfse.dps.advance`: prepare an explicit monotonic adjustment using
+  `expected_next_number`, `next_number` as decimal strings, a 12–500
+  character `reason`, and `confirmed: true`. The MCP checks the shared
+  series and next-number state before and after browser approval. The
+  module's authoritative transaction enforces the actual sequence rule.
+  This operation can skip DPS numbers and must not be used casually.
+- `api.nfse.invoices.refresh`: supply `route_params: {"invoice":7}`
+  and `body: {"nfse_receipt_id":12,"nfse_force_ajax":true}`. The MCP
+  verifies the currently linked receipt and owned parent invoice; this
+  reconciles status and **does not issue a replacement NFS-e**.
+- `api.nfse.bulk.dispatch`: supply up to 100 verified `invoice_ids`,
+  after reviewing their results from `api.nfse.bulk.plan`. A single
+  personal browser approval freezes the invoice list and company;
+  the MCP rechecks all parent invoices, active profile and restricted DPS
+  readiness immediately before dispatch. The module queues the batch;
+  workers subsequently perform each individual fiscal preflight. The
+  operation remains **disabled outside produção restrita** or when the
+  fiscal write feature switch is off. An uncertain dispatch must be
+  reconciled using `api.nfse.bulk.runs` before attempting another run.
+
+All mutating operations require the existing independent browser approval.
+No MCP tool directly authorizes or executes a mutation.
 
 ## Document the taxable event before issuing
 
@@ -55,7 +103,7 @@ The MCP rejects fiscal issue/cancel proposals if the profile points to **product
 
 ## Limits
 
-- This first increment does **not** upload or replace certificates, provision a new company profile, change Vault secrets, download XML/PDF, import ADN documents or perform bulk emission.
+- This increment does **not** upload or replace certificates, provision a new company profile, change Vault secrets, download XML/PDF or import ADN documents. Reviewed bulk emission is limited to **produção restrita** with independent browser approval and native queue preflight.
 - Production NFS-e issuance and cancellation are intentionally unavailable through the MCP until a separately reviewed production policy and legal preflight are proven. The module's own REST endpoints and permissions remain authoritative.
 - A confirmed tax association does not prove legal correctness. Never auto-create IBS/CBS as financial line taxes or assume a cooperative is exempt from a specific withholding without documented, transaction-specific evidence.
 - A complete onboarding still requires secure certificate intake, official tax/municipal evidence, DPS-series activation and verification of the installed module's version and readiness.

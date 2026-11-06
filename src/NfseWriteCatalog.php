@@ -17,6 +17,14 @@ final class NfseWriteCatalog
 {
     /** @var array<string,array{method:string,path:string,permission:string}> */
     private const ROUTES = [
+        'api.nfse.dps.advance' => [
+            'method'=>'POST','path'=>'/nfse/dps/advance',
+            'permission'=>'update-nfse-settings',
+        ],
+        'api.nfse.bulk.dispatch' => [
+            'method'=>'POST','path'=>'/nfse/bulk/dispatch',
+            'permission'=>'update-sales-invoices',
+        ],
         'api.nfse.settings.company-profiles.update' => [
             'method'=>'PATCH', 'path'=>'/nfse/settings/company-profiles/{companyId}',
             'permission'=>'update-nfse-settings',
@@ -49,6 +57,10 @@ final class NfseWriteCatalog
             'method'=>'POST', 'path'=>'/nfse/invoices/{invoice}/substitute',
             'permission'=>'update-sales-invoices',
         ],
+        'api.nfse.invoices.refresh' => [
+            'method'=>'POST', 'path'=>'/nfse/invoices/{invoice}/refresh',
+            'permission'=>'update-sales-invoices',
+        ],
         'api.nfse.invoices.cancel' => [
             'method'=>'DELETE', 'path'=>'/nfse/invoices/{invoice}',
             'permission'=>'update-sales-invoices',
@@ -77,6 +89,7 @@ final class NfseWriteCatalog
             $fiscalCommand=in_array($name,[
                 'api.nfse.invoices.emit','api.nfse.invoices.reemit',
                 'api.nfse.invoices.substitute','api.nfse.invoices.cancel',
+                'api.nfse.bulk.dispatch',
             ],true);
             $out[]=[
                 'route'=>$name, 'methods'=>[$spec['method']],
@@ -85,7 +98,11 @@ final class NfseWriteCatalog
                 'required_permission_hints'=>[$spec['permission']],
                 'human_approval'=>'required_for_every_request',
                 'enabled'=>!$fiscalCommand || getenv('MCP_NFSE_FISCAL_WRITES_ENABLED')==='true',
-                'fiscal_environment'=>$fiscalCommand?'production_restricted_only':'company_scoped_configuration',
+                'fiscal_environment'=>$fiscalCommand
+                    ? 'production_restricted_only'
+                    : (in_array($name,['api.nfse.dps.advance','api.nfse.invoices.refresh'],true)
+                        ? 'company_scoped_operational_reconciliation'
+                        : 'company_scoped_configuration'),
             ];
         }
         return $out;
@@ -137,6 +154,36 @@ final class NfseWriteCatalog
         if (!isset(self::ROUTES[$name]) || $body===[] || array_is_list($body)
             || array_key_exists('company_id',$body)) {
             throw new RuntimeException('Invalid NFS-e mutation body');
+        }
+        if ($name==='api.nfse.dps.advance') {
+            $this->only($body,[
+                'expected_next_number','next_number','reason','confirmed',
+            ]);
+            $expected=$body['expected_next_number']??null;
+            $next=$body['next_number']??null;
+            $reason=$body['reason']??null;
+            if (!is_string($expected) || preg_match('/^[1-9][0-9]{0,14}$/D',$expected)!==1
+                || !is_string($next) || preg_match('/^[1-9][0-9]{0,14}$/D',$next)!==1
+                || (int)$next<=(int)$expected
+                || !is_string($reason) || mb_strlen(trim($reason))<12
+                || mb_strlen($reason)>500 || preg_match('/[\x00-\x1F\x7F]/',$reason)===1
+                || ($body['confirmed']??null)!==true) {
+                throw new RuntimeException('Explicit and evidenced DPS advance required');
+            }
+            return;
+        }
+        if ($name==='api.nfse.bulk.dispatch') {
+            (new NfseReadOnlyPostCatalog())->validateBody('api.nfse.bulk.plan',$body);
+            return;
+        }
+        if ($name==='api.nfse.invoices.refresh') {
+            $this->only($body,['nfse_receipt_id','nfse_force_ajax']);
+            if (!is_int($body['nfse_receipt_id']??null)
+                || $body['nfse_receipt_id']<=0
+                || ($body['nfse_force_ajax']??null)!==true) {
+                throw new RuntimeException('Current fiscal receipt required for refresh');
+            }
+            return;
         }
         if ($name==='api.nfse.settings.company-profiles.update') {
             if (($params['companyId'] ?? null)!==$company) {
@@ -320,7 +367,78 @@ final class NfseWriteCatalog
             throw new RuntimeException('Active fiscal profile required');
         }
         $snapshot=['profile'=>$profile];
-        if (str_starts_with($route,'api.nfse.settings.company-profiles.')) {
+        if ($route==='api.nfse.dps.advance') {
+            $readiness=$reader->read($creds,$company,[
+                'route'=>'api.nfse.dps.readiness',
+            ])['response']['data']??null;
+            if (!is_array($readiness)
+                || ($readiness['company_id']??null)!==$company
+                || ($readiness['authority_present']??null)!==true
+                || ($readiness['local_present']??null)!==true
+                || ($readiness['profile_active']??null)!==true
+                || !is_string($readiness['series']??null)
+                || trim($readiness['series'])===''
+                || ($readiness['candidate_number']??null)!==$body['expected_next_number']) {
+                throw new RuntimeException('DPS authority or expected next number changed');
+            }
+            $snapshot['dps_readiness']=$readiness;
+        } elseif ($route==='api.nfse.bulk.dispatch') {
+            $sandbox=filter_var(
+                $profile['fiscal_parameters']['sandbox_mode']??null,
+                FILTER_VALIDATE_BOOL,FILTER_NULL_ON_FAILURE,
+            );
+            if ($sandbox!==true || getenv('MCP_NFSE_FISCAL_WRITES_ENABLED')!=='true') {
+                throw new RuntimeException('Bulk fiscal dispatch is restricted to sandbox');
+            }
+            $readiness=$reader->read($creds,$company,[
+                'route'=>'api.nfse.dps.readiness',
+            ])['response']['data']??null;
+            if (!is_array($readiness) || ($readiness['mechanically_ready']??null)!==true
+                || ($readiness['environment']??null)!==2) {
+                throw new RuntimeException('Sandbox DPS must be ready for bulk dispatch');
+            }
+            $snapshot['dps_readiness']=$readiness;
+            $snapshot['invoices']=[];
+            foreach ($body['invoice_ids'] as $invoiceId) {
+                $invoice=$api->get($creds['email'],$creds['password'],
+                    '/documents/'.$invoiceId,[
+                        'company_id'=>$company,'search'=>'type:invoice',
+                    ])['data']??null;
+                if (!is_array($invoice) || array_is_list($invoice)
+                    || ($invoice['id']??null)!==$invoiceId
+                    || (int)($invoice['company_id']??0)!==$company
+                    || ($invoice['type']??null)!=='invoice') {
+                    throw new RuntimeException('Bulk invoice does not belong to selected company');
+                }
+                ReadResponseGuard::assertNestedCompany($invoice,$company);
+                $snapshot['invoices'][]=$invoice;
+            }
+        } elseif ($route==='api.nfse.invoices.refresh') {
+            $invoiceId=$params['invoice']??null;
+            if (!is_int($invoiceId)) throw new RuntimeException('Invoice ID required');
+            $invoice=$api->get($creds['email'],$creds['password'],
+                '/documents/'.$invoiceId,[
+                    'company_id'=>$company,'search'=>'type:invoice',
+                ])['data']??null;
+            if (!is_array($invoice) || array_is_list($invoice)
+                || ($invoice['id']??null)!==$invoiceId
+                || (int)($invoice['company_id']??0)!==$company
+                || ($invoice['type']??null)!=='invoice') {
+                throw new RuntimeException('Invoice does not belong to selected company');
+            }
+            ReadResponseGuard::assertNestedCompany($invoice,$company);
+            $status=$reader->read($creds,$company,[
+                'route'=>'api.nfse.invoices.post-emission-status',
+                'route_params'=>['invoice'=>$invoiceId],
+            ])['response']['data']??null;
+            if (!is_array($status)
+                || ($status['receipt_id']??null)!==$body['nfse_receipt_id']
+                || in_array($status['status']??null,['cancelled','substituted'],true)) {
+                throw new RuntimeException('Fiscal receipt no longer current for refresh');
+            }
+            $snapshot['invoice']=$invoice;
+            $snapshot['fiscal_status']=$status;
+        } elseif (str_starts_with($route,'api.nfse.settings.company-profiles.')) {
             if (($params['companyId']??null)!==$company) {
                 throw new RuntimeException('Fiscal profile company mismatch');
             }
