@@ -13,6 +13,8 @@ declare(strict_types=1);
 const RELEASE_ROOT = __DIR__ . '/..';
 const PUBLIC_DOCUMENTS = [
     'docs/API-READ-CONTRACT.md',
+    'docs/API-PARITY.md',
+    'docs/contracts/pending-api-routes.json',
     'docs/ARCHITECTURE.md',
     'docs/CONNECTING-CHATGPT.md',
     'docs/DEPLOY.md',
@@ -24,6 +26,7 @@ const PUBLIC_DOCUMENTS = [
 const PUBLIC_GITHUB = [
     '.github/dependabot.yml',
     '.github/workflows/actionlint.yml',
+    '.github/workflows/api-parity.yml',
     '.github/workflows/commits.yml',
     '.github/workflows/composer-audit.yml',
     '.github/workflows/dco.yml',
@@ -203,6 +206,8 @@ function scopeSelfTest(): void
         scopeBlockedPath('.env.deploy'),
         !scopeBlockedPath('.env.example'),
         !scopeBlockedPath('docs/ARCHITECTURE.md'),
+        !scopeBlockedPath('docs/API-PARITY.md'),
+        !scopeBlockedPath('docs/contracts/pending-api-routes.json'),
         scopeBlockedPath('docs/NEW-REPORT.md'),
         scopeBlockedPath('.github/workflows/debug.yml'),
         !scopeBlockedPath('.github/workflows/dco.yml'),

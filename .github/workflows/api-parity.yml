@@ -1,0 +1,39 @@
+# SPDX-FileCopyrightText: 2026 LibreCode Coop and contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
+name: Akaunting API parity
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: '19 4 * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: api-parity-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  nfse-contract:
+    name: NFS-e route coverage against upstream main
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: LibreCodeCoop/akaunting-nfse
+          path: nfse-module
+          persist-credentials: false
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # v2.40.0
+        with:
+          php-version: '8.5'
+          coverage: none
+          tools: none
+      - name: Detect new, changed or stale NFS-e API contracts
+        run: >-
+          php bin/check-api-parity.php
+          --module-source=nfse-module/Routes/api.php
+          --baseline=docs/contracts/pending-api-routes.json

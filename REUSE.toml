@@ -14,6 +14,7 @@ path = [
     "composer.lock",
     "src/api-routes.json",
     "src/api-write-routes.json",
+    "docs/contracts/pending-api-routes.json",
     "vendor-bin/phpunit/composer.json",
     "vendor-bin/phpunit/composer.lock",
     "vendor-bin/phpstan/composer.json",
