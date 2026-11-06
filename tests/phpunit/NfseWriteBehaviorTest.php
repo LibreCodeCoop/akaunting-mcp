@@ -44,6 +44,7 @@ final class NfseWriteBehaviorTest extends TestCase
             public array $lastWrite=[];
             public bool $sandbox=true;
             public bool $ready=true;
+            public string $dpsCandidate='900000000000008';
             public bool $profileReady=true;
             public int $receiptId=0;
             public string $receiptState='emitted';
@@ -77,8 +78,11 @@ final class NfseWriteBehaviorTest extends TestCase
                 if ($path==='/nfse/settings/approximate-taxes') {
                     return ['data'=>[]];
                 }
-                if ($path==='/documents/7') {
-                    return ['data'=>['id'=>7,'company_id'=>$this->invoiceCompany,'type'=>'invoice']];
+                if ($path==='/documents/7' || $path==='/documents/8') {
+                    return ['data'=>[
+                        'id'=>(int)basename($path),
+                        'company_id'=>$this->invoiceCompany,'type'=>'invoice',
+                    ]];
                 }
                 if ($path==='/nfse/invoices/7/post-emission-status') {
                     return ['data'=>[
@@ -118,6 +122,9 @@ final class NfseWriteBehaviorTest extends TestCase
                 if ($path==='/nfse/dps/readiness') {
                     return ['data'=>[
                         'company_id'=>1,'environment'=>2,'mechanically_ready'=>$this->ready,
+                        'profile_active'=>true,'authority_present'=>true,'local_present'=>true,
+                        'series'=>'00001','last_number'=>'900000000000007',
+                        'candidate_number'=>$this->dpsCandidate,
                         'reasons'=>$this->ready?[]:['series_inactive'],
                         'external_reconciliation'=>'not_proven_by_this_endpoint',
                     ]];
@@ -165,6 +172,162 @@ final class NfseWriteBehaviorTest extends TestCase
             $view['request_id'],$view['csrf'],$view['cookie'],
             'approve','member@example.invalid','correct-password',$phrase,
         );
+    }
+
+    public function testDpsAdvanceRequiresApprovedExactCounterAndReason(): void
+    {
+        $body=[
+            'expected_next_number'=>'900000000000008',
+            'next_number'=>'900000000000100',
+            'reason'=>'Documented synthetic series correction for test',
+            'confirmed'=>true,
+        ];
+        $plan=$this->prepare('api.nfse.dps.advance','POST',[],$body);
+        self::assertSame('awaiting_human_approval',$plan['status']);
+        self::assertSame(0,$this->api->writes);
+        self::assertSame('completed',$this->approve($plan)['status']);
+        self::assertSame(1,$this->api->writes);
+        self::assertSame('/nfse/dps/advance',$this->api->lastWrite['path']);
+        self::assertSame($body,$this->api->lastWrite['body']);
+    }
+
+    public function testDpsAdvanceRejectsStaleSeriesAndMalformedJustifications(): void
+    {
+        $body=[
+            'expected_next_number'=>'900000000000008',
+            'next_number'=>'900000000000100',
+            'reason'=>'Documented synthetic sequence conflict',
+            'confirmed'=>true,
+        ];
+        foreach ([
+            ['expected_next_number'=>'900000000000007'],
+            ['next_number'=>'900000000000008'],
+            ['next_number'=>'9000000000000001'],
+            ['reason'=>'too short'],
+            ['reason'=>"unexpected\nnewline"],
+            ['confirmed'=>false],
+            ['company_id'=>2],
+            ['bao_token'=>'secret'],
+        ] as $change) {
+            try {
+                $this->prepare('api.nfse.dps.advance','POST',[],[...$body,...$change]);
+                self::fail('Unsafe DPS advancement proposal was prepared');
+            } catch (RuntimeException) {
+                self::assertSame(0,$this->api->writes);
+            }
+        }
+        $plan=$this->prepare('api.nfse.dps.advance','POST',[],$body);
+        $this->api->dpsCandidate='900000000000009';
+        try {
+            $this->approve($plan);
+            self::fail('DPS number drift was not detected');
+        } catch (RuntimeException) {
+            self::assertSame(0,$this->api->writes);
+            self::assertSame('outcome_unconfirmed',
+                $this->approval->status($this->subject,$plan['request_id'])['status']);
+        }
+    }
+
+    public function testFiscalReceiptRefreshUsesCurrentReceiptWithApproval(): void
+    {
+        $this->api->receiptId=12;
+        $this->api->sandbox=false;
+        $body=['nfse_receipt_id'=>12,'nfse_force_ajax'=>true];
+        $plan=$this->prepare('api.nfse.invoices.refresh','POST',['invoice'=>7],$body);
+        self::assertSame(0,$this->api->writes);
+        self::assertSame('completed',$this->approve($plan)['status']);
+        self::assertSame('/nfse/invoices/7/refresh',$this->api->lastWrite['path']);
+        self::assertSame($body,$this->api->lastWrite['body']);
+
+        $this->api->receiptId=13;
+        foreach ([
+            ['nfse_receipt_id'=>12,'nfse_force_ajax'=>true],
+            ['nfse_receipt_id'=>13,'nfse_force_ajax'=>false],
+            ['nfse_receipt_id'=>13,'nfse_force_ajax'=>true,'pfx_password'=>'secret'],
+        ] as $case) {
+            try {
+                $this->prepare('api.nfse.invoices.refresh','POST',['invoice'=>7],$case);
+                self::fail('Invalid fiscal refresh was prepared');
+            } catch (RuntimeException) {
+                self::assertSame(1,$this->api->writes);
+            }
+        }
+    }
+
+    public function testFiscalRefreshRejectsStaleReceiptAndForeignCompany(): void
+    {
+        $this->api->receiptId=12;
+        $body=['nfse_receipt_id'=>12,'nfse_force_ajax'=>true];
+        $plan=$this->prepare('api.nfse.invoices.refresh','POST',['invoice'=>7],$body);
+        $this->api->receiptId=13;
+        try {
+            $this->approve($plan);
+            self::fail('Stale fiscal status was accepted');
+        } catch (RuntimeException) {
+            self::assertSame(0,$this->api->writes);
+        }
+        $this->api->receiptId=12;
+        $this->api->invoiceCompany=2;
+        try {
+            $this->prepare('api.nfse.invoices.refresh','POST',['invoice'=>7],$body);
+            self::fail('Foreign invoice refresh was prepared');
+        } catch (RuntimeException) {
+            self::assertSame(0,$this->api->writes);
+        }
+    }
+
+    public function testBulkFiscalDispatchRequiresSandboxAndPersonalApproval(): void
+    {
+        $body=['invoice_ids'=>[7,8]];
+        $plan=$this->prepare('api.nfse.bulk.dispatch','POST',[],$body);
+        self::assertSame('awaiting_human_approval',$plan['status']);
+        self::assertSame(0,$this->api->writes);
+        self::assertSame('completed',$this->approve($plan)['status']);
+        self::assertSame('/nfse/bulk/dispatch',$this->api->lastWrite['path']);
+        self::assertSame($body,$this->api->lastWrite['body']);
+    }
+
+    public function testBulkDispatchRejectsProductionForeignAndChangedDps(): void
+    {
+        $body=['invoice_ids'=>[7,8]];
+        $this->api->sandbox=false;
+        try {
+            $this->prepare('api.nfse.bulk.dispatch','POST',[],$body);
+            self::fail('Production fiscal bulk dispatch was accepted');
+        } catch (RuntimeException) {
+            self::assertSame(0,$this->api->writes);
+        }
+        $this->api->sandbox=true;
+        $this->api->invoiceCompany=2;
+        try {
+            $this->prepare('api.nfse.bulk.dispatch','POST',[],$body);
+            self::fail('Foreign invoice was accepted');
+        } catch (RuntimeException) {
+            self::assertSame(0,$this->api->writes);
+        }
+        $this->api->invoiceCompany=1;
+        $plan=$this->prepare('api.nfse.bulk.dispatch','POST',[],$body);
+        $this->api->dpsCandidate='900000000000009';
+        try {
+            $this->approve($plan);
+            self::fail('Changed DPS was not noticed before dispatch');
+        } catch (RuntimeException) {
+            self::assertSame(0,$this->api->writes);
+        }
+        foreach ([
+            ['invoice_ids'=>[7,7]],
+            ['invoice_ids'=>['7']],
+            ['invoice_ids'=>[0]],
+            ['invoice_ids'=>range(1,101)],
+            ['invoice_ids'=>[7],'override_company_id'=>2],
+        ] as $invalid) {
+            try {
+                $this->prepare('api.nfse.bulk.dispatch','POST',[],$invalid);
+                self::fail('Invalid bulk dispatch accepted');
+            } catch (RuntimeException) {
+                self::assertSame(0,$this->api->writes);
+            }
+        }
     }
 
     public function testFiscalRoutesAreExplicitAndCannotReachSecretsOrOtherCompanies(): void
