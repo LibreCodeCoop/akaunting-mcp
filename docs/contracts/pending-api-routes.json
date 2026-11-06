@@ -1,0 +1,206 @@
+[
+  {
+    "route": "api.accounts.disable",
+    "reason": "Legacy state-changing GET needs verified authorization and independent approval."
+  },
+  {
+    "route": "api.accounts.enable",
+    "reason": "Legacy state-changing GET needs verified authorization and independent approval."
+  },
+  {
+    "route": "api.categories.disable",
+    "reason": "Legacy state-changing GET needs verified authorization and independent approval."
+  },
+  {
+    "route": "api.categories.enable",
+    "reason": "Legacy state-changing GET needs verified authorization and independent approval."
+  },
+  {
+    "route": "api.companies.disable",
+    "reason": "Legacy state-changing GET needs verified authorization and independent approval."
+  },
+  {
+    "route": "api.companies.enable",
+    "reason": "Legacy state-changing GET needs verified authorization and independent approval."
+  },
+  {
+    "route": "api.companies.owner",
+    "reason": "Company ownership endpoint needs explicit authorization and response contract."
+  },
+  {
+    "route": "api.contacts.disable",
+    "reason": "Legacy state-changing GET needs verified authorization and independent approval."
+  },
+  {
+    "route": "api.contacts.enable",
+    "reason": "Legacy state-changing GET needs verified authorization and independent approval."
+  },
+  {
+    "route": "api.currencies.disable",
+    "reason": "Legacy state-changing GET needs verified authorization and independent approval."
+  },
+  {
+    "route": "api.currencies.enable",
+    "reason": "Legacy state-changing GET needs verified authorization and independent approval."
+  },
+  {
+    "route": "api.dashboards.disable",
+    "reason": "Legacy state-changing GET needs verified authorization and independent approval."
+  },
+  {
+    "route": "api.dashboards.enable",
+    "reason": "Legacy state-changing GET needs verified authorization and independent approval."
+  },
+  {
+    "route": "api.field-studio.audit.index",
+    "reason": "Field Studio audit read needs typed filters and tenant-scoped output validation."
+  },
+  {
+    "route": "api.field-studio.definitions.destroy",
+    "reason": "Field Studio schema deletion needs contract and independent approval."
+  },
+  {
+    "route": "api.field-studio.definitions.index",
+    "reason": "Field Studio schema index needs typed filters and scoped output validation."
+  },
+  {
+    "route": "api.field-studio.definitions.show",
+    "reason": "Field Studio schema read needs typed parameters and scoped output validation."
+  },
+  {
+    "route": "api.field-studio.definitions.store",
+    "reason": "Field Studio schema creation needs typed fields and independent approval."
+  },
+  {
+    "route": "api.field-studio.definitions.update",
+    "reason": "Field Studio schema modification needs typed fields and independent approval."
+  },
+  {
+    "route": "api.field-studio.records.search",
+    "reason": "Field Studio record search needs bounded filters and typed tenant scope."
+  },
+  {
+    "route": "api.field-studio.values.create",
+    "reason": "Field Studio value creation needs typed fields and independent approval."
+  },
+  {
+    "route": "api.field-studio.values.delete",
+    "reason": "Field Studio value removal needs typed target and independent approval."
+  },
+  {
+    "route": "api.field-studio.values.patch",
+    "reason": "Field Studio value patch needs typed target and independent approval."
+  },
+  {
+    "route": "api.field-studio.values.replace",
+    "reason": "Field Studio value replacement needs typed fields and independent approval."
+  },
+  {
+    "route": "api.field-studio.values.show",
+    "reason": "Field Studio value read needs tenant-scoped output contract."
+  },
+  {
+    "route": "api.items.disable",
+    "reason": "Legacy state-changing GET needs verified authorization and independent approval."
+  },
+  {
+    "route": "api.items.enable",
+    "reason": "Legacy state-changing GET needs verified authorization and independent approval."
+  },
+  {
+    "route": "api.nfse.adn.distribution",
+    "reason": "Official ADN distribution has remote side effects and requires a bounded, authorized response contract."
+  },
+  {
+    "route": "api.nfse.adn.documents.ignore",
+    "reason": "Document review mutation needs typed input schema and independent approval."
+  },
+  {
+    "route": "api.nfse.adn.documents.import",
+    "reason": "Imported fiscal bill draft needs typed input, company isolation, and human review."
+  },
+  {
+    "route": "api.nfse.bulk.dispatch",
+    "reason": "Bulk issuance requires bounded batch approval, durable recovery, and idempotency."
+  },
+  {
+    "route": "api.nfse.bulk.plan",
+    "reason": "Bulk preview uses a POST and requires a confirmed non-mutating contract."
+  },
+  {
+    "route": "api.nfse.certificates.inspect",
+    "reason": "Certificate inspection accepts sensitive file input, needing a secure browser handoff."
+  },
+  {
+    "route": "api.nfse.closing.export",
+    "reason": "Fiscal closing export returns a file and requires a protected binary transport."
+  },
+  {
+    "route": "api.nfse.closing.ibs-cbs-evidence",
+    "reason": "Tax evidence export returns a file and requires a protected binary transport."
+  },
+  {
+    "route": "api.nfse.dps.advance",
+    "reason": "Fiscal sequence advancement needs authority and concurrency checks with approval."
+  },
+  {
+    "route": "api.nfse.invoices.refresh",
+    "reason": "Fiscal recovery is state-changing and requires a receipt-bound approval contract."
+  },
+  {
+    "route": "api.nfse.receipts.artifacts.download",
+    "reason": "Signed fiscal artifacts require protected authenticated binary download handling."
+  },
+  {
+    "route": "api.nfse.settings.artifacts.update",
+    "reason": "WebDAV destination and credentials require secured field handling and approval."
+  },
+  {
+    "route": "api.nfse.settings.company-profiles.cleanup",
+    "reason": "Fiscal profile cleanup is destructive and requires state-aware approval."
+  },
+  {
+    "route": "api.nfse.settings.company-profiles.destroy",
+    "reason": "Fiscal profile deletion is destructive and requires state-aware approval."
+  },
+  {
+    "route": "api.nfse.settings.company-profiles.store",
+    "reason": "Company profile creation needs tenant and tax identity validation."
+  },
+  {
+    "route": "api.nfse.settings.vault.diagnostics",
+    "reason": "Vault diagnostics can touch external credentials and need bounded result handling."
+  },
+  {
+    "route": "api.nfse.settings.vault.update",
+    "reason": "Vault configuration includes secrets requiring browser-only sensitive entry."
+  },
+  {
+    "route": "api.ping",
+    "reason": "Infrastructure probe needs an explicit non-sensitive response contract."
+  },
+  {
+    "route": "api.reports.create",
+    "reason": "Report HTML construction is not necessarily a safe JSON API response."
+  },
+  {
+    "route": "api.reports.edit",
+    "reason": "Report HTML edit route is not necessarily a safe JSON API response."
+  },
+  {
+    "route": "api.taxes.disable",
+    "reason": "Legacy state-changing GET needs verified authorization and independent approval."
+  },
+  {
+    "route": "api.taxes.enable",
+    "reason": "Legacy state-changing GET needs verified authorization and independent approval."
+  },
+  {
+    "route": "api.users.disable",
+    "reason": "Legacy user deactivation needs explicit permissions and independent approval."
+  },
+  {
+    "route": "api.users.enable",
+    "reason": "Legacy user activation needs explicit permissions and independent approval."
+  }
+]
