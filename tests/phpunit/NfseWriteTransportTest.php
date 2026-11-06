@@ -87,6 +87,17 @@ final class NfseWriteTransportTest extends TestCase
         self::assertSame('synthetic_cancelled',$result['data']['data']['status']);
     }
 
+    public function testFiscalReemissionSendsReviewedPostToTenantPath(): void
+    {
+        $result=$this->api()->mutate(
+            'synthetic@example.invalid','synthetic-password','POST',
+            '/nfse/invoices/7/reemit',1,
+            ['nfse_receipt_id'=>12,'nfse_force_ajax'=>true],
+        );
+        self::assertSame(200,$result['http_status']);
+        self::assertSame('synthetic_reemitted',$result['data']['data']['status']);
+    }
+
     public function testFiscalEventEvidencePostsApprovedJsonToTenantScopedApi(): void
     {
         $result=$this->api()->mutate(

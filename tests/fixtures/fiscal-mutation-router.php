@@ -25,6 +25,11 @@ if ($path==='/1/api/nfse/invoices/7/fiscal-event-evidence' && $method==='POST'
     echo '{"status":"attested"}';
     exit;
 }
+if ($path==='/1/api/nfse/invoices/7/reemit' && $method==='POST'
+    && $body===['nfse_receipt_id'=>12,'nfse_force_ajax'=>true]) {
+    echo '{"data":{"status":"synthetic_reemitted"}}';
+    exit;
+}
 if ($path==='/1/api/nfse/invoices/7' && $method==='DELETE'
     && ($body['nfse_receipt_id']??null)===12
     && ($body['cancel_reason']??null)==='9') {

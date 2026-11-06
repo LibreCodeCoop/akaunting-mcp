@@ -46,6 +46,8 @@ final class NfseWriteBehaviorTest extends TestCase
             public bool $ready=true;
             public bool $profileReady=true;
             public int $receiptId=0;
+            public string $receiptState='emitted';
+            public string $receiptNumber='9900123';
             public int $invoiceCompany=1;
             public int $profileVersion=1;
             public string $groupKey='service:0107|tax:010701|mun:123|rate:5.00';
@@ -82,8 +84,19 @@ final class NfseWriteBehaviorTest extends TestCase
                     return ['data'=>[
                         'status'=>$this->receiptId>0?'complete':'idle',
                         'receipt_id'=>$this->receiptId>0?$this->receiptId:null,
+                        'nfse_number'=>$this->receiptId>0?$this->receiptNumber:null,
                         'artifacts'=>['danfse'=>['ready'=>false,'download_url'=>null]],
                     ]];
+                }
+                if ($path==='/nfse/ledger') {
+                    $rows=$this->receiptId>0 && $this->receiptState==='cancelled'
+                        && ($query['status']??null)==='cancelled'
+                        && ($query['search']??null)===$this->receiptNumber
+                        ? [[
+                            'id'=>$this->receiptId,'invoice_id'=>7,
+                            'nfse_number'=>$this->receiptNumber,'status'=>'cancelled',
+                        ]] : [];
+                    return ['data'=>$rows,'meta'=>['total'=>count($rows)]];
                 }
                 if ($path==='/nfse/invoices/7/fiscal-assessment') {
                     return [
@@ -158,6 +171,7 @@ final class NfseWriteBehaviorTest extends TestCase
         $routes=new WriteRouteCatalog();
         $names=array_column($routes->list(),'route');
         self::assertContains('api.nfse.invoices.emit',$names);
+        self::assertContains('api.nfse.invoices.reemit',$names);
         self::assertContains('api.nfse.settings.company-profiles.update',$names);
         self::assertNotContains('api.nfse.settings.vault.update',$names);
         self::assertSame(
@@ -165,6 +179,7 @@ final class NfseWriteBehaviorTest extends TestCase
             $routes->resolve('api.nfse.invoices.emit','POST',['invoice'=>7])['path'],
         );
         self::assertTrue($routes->permits('POST','/nfse/invoices/7/emit'));
+        self::assertTrue($routes->permits('POST','/nfse/invoices/7/reemit'));
         self::assertFalse($routes->permits('POST','/nfse/invoices/7'));
         self::assertFalse($routes->permits('POST','/nfse/settings/vault'));
         self::assertFalse($routes->permits('POST','/nfse/invoices/7/emit/../../vault'));
@@ -331,6 +346,86 @@ final class NfseWriteBehaviorTest extends TestCase
         self::assertSame('DELETE',$this->api->lastWrite['method']);
         self::assertSame('/nfse/invoices/7',$this->api->lastWrite['path']);
         self::assertSame(12,$this->api->lastWrite['body']['nfse_receipt_id']);
+    }
+
+    public function testReemissionRequiresCancelledCurrentReceiptAndBrowserApproval(): void
+    {
+        $this->api->receiptId=12;
+        $this->api->receiptState='cancelled';
+        $proposal=$this->prepare('api.nfse.invoices.reemit','POST',['invoice'=>7],[
+            'nfse_receipt_id'=>12,'nfse_force_ajax'=>true,
+        ]);
+        self::assertSame('awaiting_human_approval',$proposal['status']);
+        self::assertSame(0,$this->api->writes);
+        self::assertSame('completed',$this->approve($proposal)['status']);
+        self::assertSame(1,$this->api->writes);
+        self::assertSame('POST',$this->api->lastWrite['method']);
+        self::assertSame('/nfse/invoices/7/reemit',$this->api->lastWrite['path']);
+        self::assertSame(12,$this->api->lastWrite['body']['nfse_receipt_id']);
+    }
+
+    public function testReemissionRejectsActiveReceiptAndUnreviewedFields(): void
+    {
+        $this->api->receiptId=12;
+        $body=['nfse_receipt_id'=>12,'nfse_force_ajax'=>true];
+        try {
+            $this->prepare('api.nfse.invoices.reemit','POST',['invoice'=>7],$body);
+            self::fail('Active fiscal receipt was allowed to reemit');
+        } catch (RuntimeException) {
+            self::assertSame(0,$this->api->writes);
+        }
+        $this->api->receiptState='cancelled';
+        foreach ([
+            ['nfse_receipt_id'=>11],
+            ['nfse_receipt_id'=>0],
+            ['nfse_force_ajax'=>false],
+            ['pfx_password'=>'forbidden'],
+        ] as $override) {
+            try {
+                $this->prepare('api.nfse.invoices.reemit','POST',['invoice'=>7],[
+                    ...$body,...$override,
+                ]);
+                self::fail('Unsafe fiscal reemission proposal was allowed');
+            } catch (RuntimeException) {
+                self::assertSame(0,$this->api->writes);
+            }
+        }
+    }
+
+    public function testReemissionDetectsFiscalStateChangeAfterApprovalPreparation(): void
+    {
+        $this->api->receiptId=12;
+        $this->api->receiptState='cancelled';
+        $proposal=$this->prepare('api.nfse.invoices.reemit','POST',['invoice'=>7],[
+            'nfse_receipt_id'=>12,'nfse_force_ajax'=>true,
+        ]);
+        $this->api->receiptState='emitted';
+        $this->expectException(RuntimeException::class);
+        try {
+            $this->approve($proposal);
+        } finally {
+            self::assertSame(0,$this->api->writes);
+            self::assertSame('outcome_unconfirmed',
+                $this->approval->status($this->subject,$proposal['request_id'])['status']);
+        }
+    }
+
+    public function testReemissionRejectsProductionOrUnreadyDps(): void
+    {
+        $this->api->receiptId=12;
+        $this->api->receiptState='cancelled';
+        $body=['nfse_receipt_id'=>12,'nfse_force_ajax'=>true];
+        $this->api->sandbox=false;
+        try {
+            $this->prepare('api.nfse.invoices.reemit','POST',['invoice'=>7],$body);
+            self::fail('Production fiscal reemission was allowed');
+        } catch (RuntimeException) {
+            self::assertSame(0,$this->api->writes);
+        }
+        $this->api->sandbox=true;
+        $this->api->ready=false;
+        $this->expectException(RuntimeException::class);
+        $this->prepare('api.nfse.invoices.reemit','POST',['invoice'=>7],$body);
     }
 
     public function testFiscalWritesRejectProductionAndForeignInvoices(): void
