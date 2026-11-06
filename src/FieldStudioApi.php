@@ -26,7 +26,7 @@ final class FieldStudioApi
         if (!is_string($name) || !str_starts_with($name,'api.field-studio.')) {
             throw new RuntimeException('Field Studio route required');
         }
-        foreach (['nfse_filters','fields','record_type','search','page','limit'] as $unapproved) {
+        foreach (['nfse_filters','post_body','fields','record_type','search','page','limit'] as $unapproved) {
             if (array_key_exists($unapproved,$args)) {
                 throw new RuntimeException('Field Studio uses reviewed module_filters only');
             }
