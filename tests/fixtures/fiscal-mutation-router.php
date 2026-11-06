@@ -25,6 +25,16 @@ if ($path==='/1/api/nfse/invoices/7/fiscal-event-evidence' && $method==='POST'
     echo '{"status":"attested"}';
     exit;
 }
+if ($path==='/1/api/nfse/invoices/7/substitute' && $method==='POST'
+    && $body===[
+        'nfse_substitution_receipt_id'=>12,
+        'nfse_substitution_reason'=>'05',
+        'nfse_substitution_description'=>'Synthetic fiscal correction for integration testing',
+        'nfse_force_ajax'=>true,
+    ]) {
+    echo '{"data":{"status":"synthetic_substituted"}}';
+    exit;
+}
 if ($path==='/1/api/nfse/invoices/7/reemit' && $method==='POST'
     && $body===['nfse_receipt_id'=>12,'nfse_force_ajax'=>true]) {
     echo '{"data":{"status":"synthetic_reemitted"}}';

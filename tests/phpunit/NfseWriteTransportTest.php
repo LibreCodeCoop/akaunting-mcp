@@ -98,6 +98,21 @@ final class NfseWriteTransportTest extends TestCase
         self::assertSame('synthetic_reemitted',$result['data']['data']['status']);
     }
 
+    public function testFiscalSubstitutionUsesReviewedPostWithExactReceiptId(): void
+    {
+        $result=$this->api()->mutate(
+            'synthetic@example.invalid','synthetic-password','POST',
+            '/nfse/invoices/7/substitute',1,[
+                'nfse_substitution_receipt_id'=>12,
+                'nfse_substitution_reason'=>'05',
+                'nfse_substitution_description'=>'Synthetic fiscal correction for integration testing',
+                'nfse_force_ajax'=>true,
+            ],
+        );
+        self::assertSame(200,$result['http_status']);
+        self::assertSame('synthetic_substituted',$result['data']['data']['status']);
+    }
+
     public function testFiscalEventEvidencePostsApprovedJsonToTenantScopedApi(): void
     {
         $result=$this->api()->mutate(
