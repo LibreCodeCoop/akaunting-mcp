@@ -36,6 +36,8 @@ final class MutationApprovalBehaviorTest extends TestCase
         $this->api=new class($this->config) extends Api {
             public int $writes=0;
             public string $name='Original member';
+            public string $fieldStudioValue='Operations';
+            public int $fieldStudioCompany=1;
             public array $lastWrite=[];
             public ?\Closure $onVerify=null;
 
@@ -62,6 +64,20 @@ final class MutationApprovalBehaviorTest extends TestCase
                 }
                 if ($path==='/companies/1') {
                     return ['data'=>['id'=>1,'name'=>'Synthetic company']];
+                }
+                if ($path==='/v1/field-studio/records/invoice/7/values') {
+                    return ['data'=>[['id'=>13,'company_id'=>$this->fieldStudioCompany,
+                        'entity_type'=>'invoice','field_key'=>'cost_center',
+                        'value'=>$this->fieldStudioValue,'is_set'=>true,
+                        'value_version'=>2]]];
+                }
+                if ($path==='/v1/field-studio/definitions') {
+                    return ['data'=>[['id'=>13,'company_id'=>$this->fieldStudioCompany,
+                        'entity_type'=>'invoice','field_key'=>'cost_center','version'=>2]]];
+                }
+                if ($path==='/v1/field-studio/definitions/13') {
+                    return ['data'=>['id'=>13,'company_id'=>$this->fieldStudioCompany,
+                        'entity_type'=>'invoice','field_key'=>'cost_center','version'=>2]];
                 }
                 if ($path==='/documents/2') {
                     return ['data'=>['id'=>2,'company_id'=>1,'type'=>'bill','status'=>'paid']];
@@ -374,6 +390,77 @@ final class MutationApprovalBehaviorTest extends TestCase
         $this->approval->decide($view['request_id'],$view['csrf'],$view['cookie'],
             'approve','member@example.invalid','correct-password');
     }
+    public function testFieldStudioWriteRequiresIndependentBrowserAuthorization(): void
+    {
+        $proposal=$this->approval->prepare($this->subject,$this->store->load($this->subject),1,[
+            'route'=>'api.field-studio.values.patch',
+            'method'=>'PATCH','route_params'=>['entity_type'=>'invoice','entity_id'=>7],
+            'body'=>['values'=>['cost_center'=>'Sales'],'versions'=>['cost_center'=>2]],
+        ]);
+        self::assertSame('awaiting_human_approval',$proposal['status']);
+        self::assertSame(0,$this->api->writes);
+        self::assertSame('pending',
+            $this->approval->status($this->subject,$proposal['request_id'])['status']);
+        $view=$this->approval->review($proposal['request_id']);
+        $result=$this->approval->decide($view['request_id'],$view['csrf'],$view['cookie'],
+            'approve','member@example.invalid','correct-password');
+        self::assertSame('completed',$result['status']);
+        self::assertSame(1,$this->api->writes);
+        self::assertSame('/v1/field-studio/records/invoice/7/values',$this->api->lastWrite['path']);
+        self::assertSame('PATCH',$this->api->lastWrite['method']);
+        self::assertSame(['values'=>['cost_center'=>'Sales'],'versions'=>['cost_center'=>2]],
+            $this->api->lastWrite['body']);
+        $this->expectException(RuntimeException::class);
+        $this->approval->decide($view['request_id'],$view['csrf'],$view['cookie'],
+            'approve','member@example.invalid','correct-password');
+    }
+
+    public function testFieldStudioChangedValueInvalidatesApprovedPlan(): void
+    {
+        $proposal=$this->approval->prepare($this->subject,$this->store->load($this->subject),1,[
+            'route'=>'api.field-studio.values.patch',
+            'method'=>'PATCH','route_params'=>['entity_type'=>'invoice','entity_id'=>7],
+            'body'=>['values'=>['cost_center'=>'Sales']],
+        ]);
+        $this->api->fieldStudioValue='Changed since preview';
+        $view=$this->approval->review($proposal['request_id']);
+        try {
+            $this->approval->decide($view['request_id'],$view['csrf'],$view['cookie'],
+                'approve','member@example.invalid','correct-password');
+            self::fail('A stale Field Studio approval must not execute');
+        } catch (RuntimeException) {
+            self::assertSame(0,$this->api->writes);
+            self::assertSame('outcome_unconfirmed',
+                $this->approval->status($this->subject,$proposal['request_id'])['status']);
+        }
+    }
+
+    public function testFieldStudioCreationRequiresPersonalApprovalAndRejectsForeignData(): void
+    {
+        $request=[
+            'route'=>'api.field-studio.definitions.store','method'=>'POST',
+            'body'=>['entity_type'=>'invoice','field_key'=>'cost_center',
+                'label'=>'Cost center','field_type'=>'text'],
+        ];
+        $this->api->fieldStudioCompany=2;
+        try {
+            $this->approval->prepare($this->subject,$this->store->load($this->subject),1,$request);
+            self::fail('Foreign company definitions should be denied');
+        } catch (RuntimeException) {
+            self::assertSame(0,$this->api->writes);
+        }
+        $this->api->fieldStudioCompany=1;
+        $proposal=$this->approval->prepare(
+            $this->subject,$this->store->load($this->subject),1,$request);
+        self::assertSame(0,$this->api->writes);
+        $view=$this->approval->review($proposal['request_id']);
+        $this->approval->decide($view['request_id'],$view['csrf'],$view['cookie'],
+            'approve','member@example.invalid','correct-password');
+        self::assertSame(1,$this->api->writes);
+        self::assertSame('/v1/field-studio/definitions',$this->api->lastWrite['path']);
+        self::assertArrayNotHasKey('company_id',$this->api->lastWrite['body']);
+    }
+
     public function testWriteCatalogDoesNotPermitUnknownMethodsOrArbitraryPaths(): void
     {
         $routes=new WriteRouteCatalog();

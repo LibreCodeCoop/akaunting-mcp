@@ -48,9 +48,16 @@ final class ApprovalService
         }
         $route=$this->routes->resolve($name,$method,$params);
         $fiscal=str_starts_with($name,'api.nfse.');
+        $fieldStudio=str_starts_with($name,'api.field-studio.');
         if ($fiscal) {
             if ($recordType!==null) throw new RuntimeException('Fiscal record type is not applicable');
             (new NfseWriteCatalog())->validate($name,$body,$company,$params);
+        }
+        if ($fieldStudio) {
+            if ($recordType!==null) {
+                throw new RuntimeException('Field Studio record type is part of its route');
+            }
+            (new FieldStudioCatalog())->validateWrite($name,$method,$params,$body);
         }
         if ($recordType!==null && (!is_string($recordType)
             || !preg_match('/^[a-z][a-z0-9_-]{0,49}$/D',$recordType))) {
@@ -73,7 +80,7 @@ final class ApprovalService
         }
         // The query always selects the authorized company; the body must be
         // consistent with the query, including during create operations.
-        if (!$fiscal) $body['company_id']=$company;
+        if (!$fiscal && !$fieldStudio) $body['company_id']=$company;
         if ($typeSensitive && isset($body['type']) && $body['type']!==$recordType) {
             throw new RuntimeException('Record type differs from selected authorization context');
         }
@@ -270,6 +277,11 @@ final class ApprovalService
     ): ?string {
         if (str_starts_with($route,'api.nfse.')) {
             return (new NfseWriteCatalog())->snapshot(
+                $this->api,$creds,$company,$route,$params,$body
+            );
+        }
+        if (str_starts_with($route,'api.field-studio.')) {
+            return (new FieldStudioCatalog())->snapshot(
                 $this->api,$creds,$company,$route,$params,$body
             );
         }

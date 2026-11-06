@@ -27,7 +27,7 @@ final class NfseReadService
         }
         if (array_key_exists('fields',$args) || array_key_exists('record_type',$args)
             || array_key_exists('search',$args) || array_key_exists('page',$args)
-            || array_key_exists('limit',$args)) {
+            || array_key_exists('limit',$args) || array_key_exists('module_filters',$args)) {
             throw new RuntimeException('NFS-e reads require approved nfse_filters only');
         }
         $params=$args['route_params'] ?? [];

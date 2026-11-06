@@ -55,7 +55,9 @@ final class WriteRouteCatalog
             'required_permission_hints'=>$r['permissions']??[],
             'human_approval'=>'required_for_every_request',
         ], $this->routes));
-        return array_merge($core,(new NfseWriteCatalog())->list());
+        return array_merge(
+            $core,(new NfseWriteCatalog())->list(),(new FieldStudioCatalog())->listWrite()
+        );
     }
 
     /** @return array{path:string,method:string,route:array<string,mixed>} */
@@ -63,6 +65,9 @@ final class WriteRouteCatalog
     {
         if (str_starts_with($name,'api.nfse.')) {
             return (new NfseWriteCatalog())->resolve($name,$method,$params);
+        }
+        if (str_starts_with($name,'api.field-studio.')) {
+            return (new FieldStudioCatalog())->resolveWrite($name,$method,$params);
         }
         $route=$this->routes[$name] ?? null;
         if ($route === null || !in_array($method,$route['methods'],true)) {
@@ -89,6 +94,9 @@ final class WriteRouteCatalog
     {
         if (str_starts_with($path,'/nfse/')) {
             return (new NfseWriteCatalog())->permits($method,$path);
+        }
+        if (str_starts_with($path,'/v1/field-studio/')) {
+            return (new FieldStudioCatalog())->permitsWrite($method,$path);
         }
         foreach ($this->routes as $route) {
             if (!in_array($method,$route['methods'],true)) continue;
