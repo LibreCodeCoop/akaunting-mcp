@@ -101,10 +101,10 @@ final class Toolset
         unset($tool);
         $writeRoutes = [
             ['name'=>'akaunting_mutation_routes',
-                'description'=>'List reviewed native and restricted NFS-e API mutations. Every change requires independent browser approval; fiscal issuance and cancellation are sandbox-only.',
+                'description'=>'List reviewed Akaunting API mutations. Each change requires user-confirmed native tool execution or the legacy browser approval; restricted fiscal issuance and cancellation remain sandbox-only.',
                 'inputSchema'=>['type'=>'object','properties'=>['company_id'=>$company], 'required'=>['company_id']]],
             ['name'=>'akaunting_prepare_mutation',
-                'description'=>'PREPARE ONLY: display an exact proposed Akaunting change and create a short-lived browser approval link. Does NOT change financial records. Each subsequent change requires separate human review, reauthentication and consent in the independent browser.',
+                'description'=>'PREPARE ONLY: validate and freeze an Akaunting mutation. By default returns a request ID for a user-confirmed native ChatGPT write tool call; no browser login or password. Legacy approval_transport=browser remains available. No records are changed by prepare.',
                 'inputSchema'=>['type'=>'object','properties'=>[
                     'company_id'=>$company,
                     'route'=>['type'=>'string','maxLength'=>120],
@@ -112,19 +112,31 @@ final class Toolset
                     'route_params'=>['type'=>'object','description'=>'Exact registered parameters: positive integer IDs, or approved Field Studio entity_type/field_key strings.'],
                     'body'=>['type'=>'object','description'=>'Exact JSON object of proposed changes; never arbitrary URL paths.'],
                     'record_type'=>['type'=>'string','description'=>'Required for contacts/documents; e.g. vendor, customer, invoice, bill.'],
+                    'approval_transport'=>['type'=>'string','enum'=>['chatgpt','browser'],'description'=>'Default chatgpt: use native host tool confirmation and existing MCP OAuth session. Browser is legacy fallback.'],
                 ],'required'=>['company_id','route','method']]],
+            ['name'=>'akaunting_execute_prepared_mutation',
+                'description'=>'WRITE ACTION - requires ChatGPT native tool confirmation. Execute exactly one previously prepared, immutable Akaunting operation under the already linked personal OAuth identity. This changes real data. Only call when the user explicitly authorizes that operation. The prepared company, route and method must match; never retry an unknown outcome.',
+                'inputSchema'=>['type'=>'object','properties'=>[
+                    'company_id'=>$company,
+                    'request_id'=>['type'=>'string','pattern'=>'^[0-9a-f]{64}$'],
+                    'route'=>['type'=>'string','maxLength'=>120,'description'=>'Exact route from the frozen proposal, visible during native host confirmation.'],
+                    'method'=>['type'=>'string','enum'=>['POST','PUT','PATCH','DELETE']],
+                    'confirmation'=>['type'=>'string','enum'=>['EXCLUIR','CANCELAR'],'description'=>'Required for DELETE. Must match the appropriate destructive confirmation phrase.'],
+                ],'required'=>['company_id','request_id','route','method']]],
             ['name'=>'akaunting_mutation_status',
-                'description'=>'Read status of one prepared mutation. Only an independent authenticated browser approval can cause execution; the assistant cannot approve or submit changes.',
+                'description'=>'Read the status of a prepared mutation, including a native host-confirmed write, without executing it.',
                 'inputSchema'=>['type'=>'object','properties'=>[
                     'company_id'=>$company,
                     'request_id'=>['type'=>'string','pattern'=>'^[0-9a-f]{64}$'],
                 ],'required'=>['company_id','request_id']]],
         ];
         foreach ($writeRoutes as &$tool) {
+            $isExecute=$tool['name']==='akaunting_execute_prepared_mutation';
+            $isPrepare=$tool['name']==='akaunting_prepare_mutation';
             $tool['annotations']=[
-                'readOnlyHint'=>$tool['name']!=='akaunting_prepare_mutation',
-                'destructiveHint'=>false,
-                'idempotentHint'=>$tool['name']!=='akaunting_prepare_mutation',
+                'readOnlyHint'=>!$isExecute && !$isPrepare,
+                'destructiveHint'=>$isExecute,
+                'idempotentHint'=>!$isExecute && !$isPrepare,
                 'openWorldHint'=>true,
             ];
             $tool['securitySchemes']=[['type'=>'oauth2','scopes'=>['mcp:read']]];
@@ -155,11 +167,26 @@ final class Toolset
             throw new RuntimeException('company_id must be a number');
         }
         $this->api->verify($creds['email'],$creds['password'],Api::companyId($company));
-        if (in_array($name,['akaunting_mutation_routes','akaunting_prepare_mutation','akaunting_mutation_status'],true)) {
+        if (in_array($name,['akaunting_mutation_routes','akaunting_prepare_mutation',
+            'akaunting_execute_prepared_mutation','akaunting_mutation_status'],true)) {
             $approvals=new ApprovalService($this->store,$this->api,$this->api->issuer());
             if ($name==='akaunting_mutation_routes')return $approvals->routes();
             if ($name==='akaunting_prepare_mutation') {
+                $args['approval_transport']=$args['approval_transport'] ?? 'chatgpt';
                 return $approvals->prepare($subject,$creds,$company,$args);
+            }
+            if ($name==='akaunting_execute_prepared_mutation') {
+                $request=$args['request_id'] ?? null;
+                $route=$args['route'] ?? null;
+                $method=$args['method'] ?? null;
+                $confirmation=$args['confirmation'] ?? '';
+                if (!is_string($request) || !is_string($route)
+                    || !is_string($method) || !is_string($confirmation)) {
+                    throw new RuntimeException('Invalid native mutation confirmation');
+                }
+                return $approvals->executeNative(
+                    $subject,$company,$request,$route,$method,$confirmation
+                );
             }
             $request=$args['request_id'] ?? null;
             if (!is_string($request))throw new RuntimeException('Invalid mutation request ID');

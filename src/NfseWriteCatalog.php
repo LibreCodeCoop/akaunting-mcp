@@ -131,7 +131,7 @@ final class NfseWriteCatalog
         return false;
     }
 
-    /** Validate before preparing a browser approval; the module validates again. */
+    /** Validate before preparing a single-use approval; the module validates again. */
     public function validate(string $name, array $body, int $company, array $params): void
     {
         if (!isset(self::ROUTES[$name]) || $body===[] || array_is_list($body)

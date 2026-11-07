@@ -17,7 +17,7 @@ The MCP uses the **same authenticated NFS-e REST endpoints** as the Akaunting mo
 
 ## Review and approve a configuration change
 
-`akaunting_mutation_routes` lists the reviewed operations. `akaunting_prepare_mutation` accepts one exact route, method, selected `company_id`, typed path parameters and JSON body. The MCP returns a short-lived approval link and does not execute the change.
+`akaunting_mutation_routes` lists the reviewed operations. `akaunting_prepare_mutation` accepts one exact route, method, selected `company_id`, typed path parameters and JSON body. The MCP returns a short-lived immutable proposal and does not execute the change. By default, call the non-read-only `akaunting_execute_prepared_mutation` tool with the returned request ID, company, route and method; the ChatGPT host must ask the user to confirm this write without an additional login.
 
 The following NFS-e operations are available when the matching module API is deployed:
 
@@ -35,17 +35,17 @@ The following NFS-e operations are available when the matching module API is dep
 
 The profile PATCH accepts `fiscal_parameters` only, never `pfx_file`, `pfx_password` or arbitrary nested fields. It cannot activate the production gateway (`sandbox_mode=false`) or automatic issuance (`emission_policy=emit_on_send`); these transitions require separate operational review outside the MCP. Tax association confirmation requires an existing tax ID, legal provenance, effective dates and `acknowledge=true`. Approximate tax rates are decimal **strings**, not floating-point numbers.
 
-Each prepared operation must be reviewed in the HTTPS approval page by the **same personal Akaunting user**, who reauthenticates and explicitly authorizes it. A cancellation requires typing `CANCELAR`; a native Core deletion continues to require `EXCLUIR`. The approved request is single-use and expires after ten minutes. Verify the result with `akaunting_mutation_status` and a separate read.
+Each prepared operation requires human authorization. The default is native ChatGPT tool confirmation using the already-connected personal OAuth identity; the alternative `approval_transport=browser` still requires a separate HTTPS review and personal Akaunting reauthentication. A cancellation requires the `CANCELAR` confirmation parameter; native Core deletion requires `EXCLUIR`. The approved request is single-use and expires after 30 minutes. Verify the result with `akaunting_mutation_status` and an independent read. Do not retry an uncertain outcome.
 
 ## Document the taxable event before issuing
 
 Read `api.nfse.invoices.fiscal-assessment` for the selected invoice to obtain its persisted `group_key` and the **calendar-only** RTC diagnostics (`final_dps_checked=false`). This is not a final DPS compliance verdict. The commercial invoice issue date is not evidence of when the taxable service event occurred.
 
-The operator must supply a verified event date and a source document reference. Prepare `api.nfse.invoices.fiscal-event-evidence.store` with `fiscal_group_key` copied exactly from the read, `taxable_event_date` in `YYYY-MM-DD`, a meaningful `source_reference` and `acknowledge=true`. The MCP does not infer or attest an event on its own. The browser approval and a fresh group/assessment comparison are mandatory; the module additionally rejects unresolved emission attempts. This configuration action remains available while the fiscal transmission switch is disabled.
+The operator must supply a verified event date and a source document reference. Prepare `api.nfse.invoices.fiscal-event-evidence.store` with `fiscal_group_key` copied exactly from the read, `taxable_event_date` in `YYYY-MM-DD`, a meaningful `source_reference` and `acknowledge=true`. The MCP does not infer or attest an event on its own. User confirmation of the mutating tool (or legacy browser approval) and a fresh group/assessment comparison are mandatory; the module additionally rejects unresolved emission attempts. This configuration action remains available while the fiscal transmission switch is disabled.
 
 ## Restricted fiscal issuance and cancellation
 
-The deployment switch `MCP_NFSE_FISCAL_WRITES_ENABLED` defaults to `false`. An operator may set it to `true` only after verifying the deployed module's unified legal preflight, active and reconciled DPS authority, restricted environment and synthetic integration tests. This switch does not bypass the separate browser approval or any native fiscal guard.
+The deployment switch `MCP_NFSE_FISCAL_WRITES_ENABLED` defaults to `false`. An operator may set it to `true` only after verifying the deployed module's unified legal preflight, active and reconciled DPS authority, restricted environment and synthetic integration tests. This switch does not bypass native user confirmation or any native fiscal guard.
 
 Before preparing an issue request, the MCP independently checks company membership, the parent invoice's ownership/type, the selected company's active profile and `sandbox_mode`, the module's DPS readiness, the invoice's fiscal profile preview and absence of an existing receipt. The module still owns every authoritative validation, fiscal number allocation, SEFIN transmission, attempt journal and recovery.
 

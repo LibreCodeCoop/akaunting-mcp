@@ -238,6 +238,61 @@ final class HttpSmokeIntegrationTest extends TestCase
             'nfse_issuance_is_not_a_read_tool');
     }
 
+    public function testNativeMutationReusesLinkedMcpOAuthWithoutNewBrowserLogin(): void
+    {
+        ['auth'=>$auth]=$this->authorize();
+        $prepare=self::jsonMessage('/mcp',[
+            'jsonrpc'=>'2.0','id'=>80,'method'=>'tools/call',
+            'params'=>['name'=>'akaunting_prepare_mutation','arguments'=>[
+                'company_id'=>1,'route'=>'api.contacts.update','method'=>'PATCH',
+                'route_params'=>['contact'=>7],'record_type'=>'vendor',
+                'body'=>['name'=>'Synthetic native confirmation'],
+            ]],
+        ],$auth);
+        self::assertFalse($prepare['result']['isError']??true);
+        $prepared=json_decode($prepare['result']['content'][0]['text'],true,16,JSON_THROW_ON_ERROR);
+        self::assertSame('awaiting_host_confirmation',$prepared['status']);
+        self::assertArrayNotHasKey('approval_url',$prepared);
+        self::assertSame([],json_decode((string)file_get_contents(
+            (string)getenv('MCP_SMOKE_MUTATION_STATE')
+        ),true));
+
+        // The only credentials supplied are the same Bearer token already
+        // connected to ChatGPT. No browser cookies, username or password.
+        $confirm=[
+            'jsonrpc'=>'2.0','id'=>81,'method'=>'tools/call',
+            'params'=>['name'=>'akaunting_execute_prepared_mutation','arguments'=>[
+                'company_id'=>1,'request_id'=>$prepared['request_id'],
+                'route'=>'api.contacts.update','method'=>'PATCH',
+            ]],
+        ];
+        $confirmed=self::jsonMessage('/mcp',$confirm,$auth);
+        self::assertFalse($confirmed['result']['isError']??true);
+        $result=json_decode($confirmed['result']['content'][0]['text'],true,16,JSON_THROW_ON_ERROR);
+        self::assertSame('completed',$result['status']);
+        $writes=json_decode((string)file_get_contents(
+            (string)getenv('MCP_SMOKE_MUTATION_STATE')
+        ),true);
+        self::assertCount(1,$writes);
+        self::assertSame('PATCH',$writes[0]['method']);
+        self::assertSame('Synthetic native confirmation',$writes[0]['body']['name']);
+
+        $replay=self::jsonMessage('/mcp',$confirm,$auth);
+        self::assertTrue($replay['result']['isError']??false);
+        self::assertCount(1,json_decode((string)file_get_contents(
+            (string)getenv('MCP_SMOKE_MUTATION_STATE')
+        ),true));
+
+        $status=self::jsonMessage('/mcp',[
+            'jsonrpc'=>'2.0','id'=>82,'method'=>'tools/call',
+            'params'=>['name'=>'akaunting_mutation_status','arguments'=>[
+                'company_id'=>1,'request_id'=>$prepared['request_id'],
+            ]],
+        ],$auth);
+        $mutation=json_decode($status['result']['content'][0]['text'],true,16,JSON_THROW_ON_ERROR);
+        self::assertSame('completed',$mutation['status']);
+    }
+
     public function testMutationsRequireIndependentBrowserApproval(): void
     {
         ['auth'=>$auth]=$this->authorize();
@@ -251,6 +306,7 @@ final class HttpSmokeIntegrationTest extends TestCase
             'company_id'=>1,'route'=>'api.contacts.update','method'=>'PATCH',
             'route_params'=>['contact'=>7],'record_type'=>'vendor',
             'body'=>['name'=>'Synthetic updated person'],
+            'approval_transport'=>'browser',
         ]);
         self::assertTrue(($proposal['result']['isError'] ?? true) === false, 'mutation_prepared_not_executed');
         $prepared=json_decode($proposal['result']['content'][0]['text'],true,16,JSON_THROW_ON_ERROR);
@@ -327,6 +383,7 @@ final class HttpSmokeIntegrationTest extends TestCase
         $delete=$prepare([
             'company_id'=>1,'route'=>'api.contacts.destroy','method'=>'DELETE',
             'route_params'=>['contact'=>7],'record_type'=>'vendor',
+            'approval_transport'=>'browser',
         ]);
         $deleteRequest=json_decode($delete['result']['content'][0]['text'],true,16,JSON_THROW_ON_ERROR);
         [$status,$headers,$page]=self::httpRequest('/mcp-auth/approve?request='.$deleteRequest['request_id']);
@@ -347,6 +404,7 @@ final class HttpSmokeIntegrationTest extends TestCase
         $create=$prepare([
             'company_id'=>1,'route'=>'api.contacts.store','method'=>'POST',
             'record_type'=>'vendor','body'=>['name'=>'Synthetic newly created vendor'],
+            'approval_transport'=>'browser',
         ]);
         $createPlan=json_decode($create['result']['content'][0]['text'],true,16,JSON_THROW_ON_ERROR);
         [$status,$headers,$page]=self::httpRequest('/mcp-auth/approve?request='.$createPlan['request_id']);
@@ -369,6 +427,7 @@ final class HttpSmokeIntegrationTest extends TestCase
         $delete=$prepare([
             'company_id'=>1,'route'=>'api.contacts.destroy','method'=>'DELETE',
             'route_params'=>['contact'=>7],'record_type'=>'vendor',
+            'approval_transport'=>'browser',
         ]);
         $deletePlan=json_decode($delete['result']['content'][0]['text'],true,16,JSON_THROW_ON_ERROR);
         [$status,$headers,$page]=self::httpRequest('/mcp-auth/approve?request='.$deletePlan['request_id']);
