@@ -145,7 +145,8 @@ class Api
      * a mutation. The API path must be from the reviewed write catalog.
      */
     public function mutate(
-        string $email, string $password, string $method, string $path, int $companyId, array $body
+        string $email, string $password, string $method, string $path, int $companyId,
+        array $body, ?string $recordType=null
     ): array {
         if ($email==='' || $password==='') throw new RuntimeException('Missing personal credentials');
         if (!(new WriteRouteCatalog())->permits($method,$path)) {
@@ -159,8 +160,24 @@ class Api
         // Fiscal module routes are tenant-prefixed, unlike the Core API.
         // Keep the company in both the path and query for the native guard.
         $modulePrefix=str_starts_with($path,'/nfse/')?'/'.$companyId:'';
+        $query=['company_id'=>$companyId];
+        // Akaunting Core chooses the controller ACL from search=type:invoice
+        // or search=type:customer, NOT from the JSON body. Without it, even
+        // legitimate users receive a misleading HTTP 403 for writes.
+        $typedCorePath=preg_match('~^/(documents|contacts)(?:/|$)~D',$path)===1;
+        if ($typedCorePath) {
+            if ($recordType===null || !preg_match('/^[a-z][a-z0-9_-]{0,49}$/D',$recordType)) {
+                throw new RuntimeException('Core entity type required for native write ACL');
+            }
+            if (isset($body['type']) && $body['type']!==$recordType) {
+                throw new RuntimeException('Core write body type does not match approved ACL type');
+            }
+            $query['search']='type:'.$recordType;
+        } elseif ($recordType!==null) {
+            throw new RuntimeException('Core entity type is not applicable to this route');
+        }
         $url = $this->config->akauntingUrl.$modulePrefix.'/api'.$path.'?'.http_build_query(
-            ['company_id'=>$companyId], '', '&', PHP_QUERY_RFC3986
+            $query, '', '&', PHP_QUERY_RFC3986
         );
         $handle = curl_init();
         if ($handle === false) throw new RuntimeException('Cannot initialize write request');

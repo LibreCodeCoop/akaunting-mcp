@@ -126,10 +126,10 @@ final class NfseWriteBehaviorTest extends TestCase
             }
 
             public function mutate(
-                string $email,string $password,string $method,string $path,int $companyId,array $body
+                string $email,string $password,string $method,string $path,int $companyId,array $body,?string $recordType=null
             ): array {
                 ++$this->writes;
-                $this->lastWrite=compact('method','path','companyId','body');
+                $this->lastWrite=compact('method','path','companyId','body','recordType');
                 return ['http_status'=>$method==='DELETE'?204:200];
             }
         };

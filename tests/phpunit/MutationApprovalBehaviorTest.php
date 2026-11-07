@@ -90,10 +90,10 @@ final class MutationApprovalBehaviorTest extends TestCase
                 throw new RuntimeException('Missing synthetic API resource');
             }
             public function mutate(
-                string $email,string $password,string $method,string $path,int $companyId,array $body
+                string $email,string $password,string $method,string $path,int $companyId,array $body,?string $recordType=null
             ): array {
                 ++$this->writes;
-                $this->lastWrite=compact('method','path','companyId','body');
+                $this->lastWrite=compact('method','path','companyId','body','recordType');
                 return ['http_status'=>$method==='DELETE'?204:200];
             }
         };
@@ -292,6 +292,7 @@ final class MutationApprovalBehaviorTest extends TestCase
         );
         self::assertSame('completed',$result['status']);
         self::assertSame('Native host confirmed',$this->api->lastWrite['body']['name']);
+        self::assertSame('vendor',$this->api->lastWrite['recordType']);
         self::assertSame(1,$this->api->writes);
         self::assertSame('completed',$this->approval->status(
             $this->subject,$proposal['request_id']
