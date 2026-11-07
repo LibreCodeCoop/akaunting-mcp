@@ -241,7 +241,7 @@ final class ApprovalService
             }
             $response=$this->api->mutate(
                 $creds['email'],$creds['password'],$plan['method'],
-                $plan['path'],(int)$entry['company_id'],$plan['body']
+                $plan['path'],(int)$entry['company_id'],$plan['body'],$plan['record_type']
             );
             $this->store->state(static function (array &$state) use ($key,$response): void {
                 $state['approvals'][$key]['status']='completed';
@@ -329,7 +329,7 @@ final class ApprovalService
             }
             $response=$this->api->mutate(
                 $creds['email'],$creds['password'],$plan['method'],$plan['path'],
-                $company,$plan['body']
+                $company,$plan['body'],$plan['record_type']
             );
             $this->store->state(static function (array &$state) use ($key,$response): void {
                 $state['approvals'][$key]['status']='completed';

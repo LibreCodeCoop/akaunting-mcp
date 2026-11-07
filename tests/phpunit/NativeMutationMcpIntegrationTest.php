@@ -57,10 +57,10 @@ final class NativeMutationMcpIntegrationTest extends TestCase
 
             public function mutate(
                 string $email,string $password,string $method,string $path,
-                int $companyId,array $body
+                int $companyId,array $body,?string $recordType=null
             ): array {
                 $this->verify($email,$password,$companyId);
-                $this->writes[]=compact('method','path','companyId','body');
+                $this->writes[]=compact('method','path','companyId','body','recordType');
                 return ['http_status'=>200];
             }
         };
@@ -118,6 +118,7 @@ final class NativeMutationMcpIntegrationTest extends TestCase
         self::assertSame('completed',$result['body']['status']);
         self::assertCount(1,$this->api->writes);
         self::assertSame('After',$this->api->writes[0]['body']['name']);
+        self::assertSame('vendor',$this->api->writes[0]['recordType']);
         self::assertSame('/contacts/7',$this->api->writes[0]['path']);
 
         $replay=$this->call('akaunting_execute_prepared_mutation',[
