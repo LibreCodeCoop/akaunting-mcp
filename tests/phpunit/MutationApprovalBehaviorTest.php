@@ -276,6 +276,164 @@ final class MutationApprovalBehaviorTest extends TestCase
         }
     }
 
+    public function testNativeConfirmationUsesLinkedOAuthIdentityWithoutBrowserCredentials(): void
+    {
+        $proposal=$this->approval->prepare($this->subject,$this->store->load($this->subject),1,[
+            'route'=>'api.contacts.update','method'=>'PATCH',
+            'route_params'=>['contact'=>7],'record_type'=>'vendor',
+            'body'=>['name'=>'Native host confirmed'],
+            'approval_transport'=>'chatgpt',
+        ]);
+        self::assertSame('awaiting_host_confirmation',$proposal['status']);
+        self::assertArrayNotHasKey('approval_url',$proposal);
+        self::assertSame(0,$this->api->writes);
+        $result=$this->approval->executeNative(
+            $this->subject,1,$proposal['request_id'],'api.contacts.update','PATCH'
+        );
+        self::assertSame('completed',$result['status']);
+        self::assertSame('Native host confirmed',$this->api->lastWrite['body']['name']);
+        self::assertSame(1,$this->api->writes);
+        self::assertSame('completed',$this->approval->status(
+            $this->subject,$proposal['request_id']
+        )['status']);
+        try {
+            $this->approval->executeNative(
+                $this->subject,1,$proposal['request_id'],'api.contacts.update','PATCH'
+            );
+            self::fail('The native approval must be one-use');
+        } catch (RuntimeException) {
+            self::assertSame(1,$this->api->writes);
+        }
+    }
+
+    public function testNativeConfirmationRejectsWrongTenantIdentityAndRoute(): void
+    {
+        $proposal=$this->approval->prepare($this->subject,$this->store->load($this->subject),1,[
+            'route'=>'api.contacts.update','method'=>'PATCH',
+            'route_params'=>['contact'=>7],'record_type'=>'vendor',
+            'body'=>['name'=>'Never authorized'],
+            'approval_transport'=>'chatgpt',
+        ]);
+        foreach ([
+            [str_repeat('a',64),1,'api.contacts.update','PATCH'],
+            [$this->subject,2,'api.contacts.update','PATCH'],
+            [$this->subject,1,'api.contacts.destroy','PATCH'],
+            [$this->subject,1,'api.contacts.update','DELETE'],
+        ] as [$subject,$company,$route,$method]) {
+            try {
+                $this->approval->executeNative(
+                    $subject,$company,$proposal['request_id'],$route,$method
+                );
+                self::fail('Wrong confirmation context was accepted');
+            } catch (RuntimeException) {
+                self::assertSame(0,$this->api->writes);
+            }
+        }
+        $result=$this->approval->executeNative(
+            $this->subject,1,$proposal['request_id'],'api.contacts.update','PATCH'
+        );
+        self::assertSame('completed',$result['status']);
+        self::assertSame(1,$this->api->writes);
+    }
+
+    public function testNativeConfirmationCannotExecuteLegacyBrowserProposal(): void
+    {
+        $proposal=$this->prepare();
+        $this->expectException(RuntimeException::class);
+        try {
+            $this->approval->executeNative(
+                $this->subject,1,$proposal['request_id'],'api.contacts.update','PATCH'
+            );
+        } finally {
+            self::assertSame(0,$this->api->writes);
+        }
+    }
+
+    public function testLegacyBrowserCannotApproveNativeProposal(): void
+    {
+        $proposal=$this->approval->prepare($this->subject,$this->store->load($this->subject),1,[
+            'route'=>'api.contacts.update','method'=>'PATCH',
+            'route_params'=>['contact'=>7],'record_type'=>'vendor',
+            'body'=>['name'=>'MCP-only action'],
+            'approval_transport'=>'chatgpt',
+        ]);
+        $review=$this->approval->review($proposal['request_id']);
+        try {
+            $this->approval->decide(
+                $review['request_id'],$review['csrf'],$review['cookie'],'approve',
+                'member@example.invalid','correct-password'
+            );
+            self::fail('Browser cannot approve an MCP-native-only plan');
+        } catch (RuntimeException) {
+            self::assertSame(0,$this->api->writes);
+        }
+        $this->approval->executeNative(
+            $this->subject,1,$proposal['request_id'],'api.contacts.update','PATCH'
+        );
+        self::assertSame(1,$this->api->writes);
+    }
+
+    public function testNativeDestructiveActionRequiresPhraseAndNeverReplays(): void
+    {
+        $proposal=$this->approval->prepare($this->subject,$this->store->load($this->subject),1,[
+            'route'=>'api.contacts.destroy','method'=>'DELETE',
+            'route_params'=>['contact'=>7],'record_type'=>'vendor',
+            'body'=>[],'approval_transport'=>'chatgpt',
+        ]);
+        try {
+            $this->approval->executeNative(
+                $this->subject,1,$proposal['request_id'],'api.contacts.destroy','DELETE'
+            );
+            self::fail('Missing explicit deletion phrase was accepted');
+        } catch (RuntimeException) {
+            self::assertSame(0,$this->api->writes);
+        }
+        $this->approval->executeNative(
+            $this->subject,1,$proposal['request_id'],'api.contacts.destroy','DELETE','EXCLUIR'
+        );
+        self::assertSame(1,$this->api->writes);
+    }
+
+    public function testNativeConfirmationRejectsExpiredAndChangedTarget(): void
+    {
+        $proposal=$this->approval->prepare($this->subject,$this->store->load($this->subject),1,[
+            'route'=>'api.contacts.update','method'=>'PATCH',
+            'route_params'=>['contact'=>7],'record_type'=>'vendor',
+            'body'=>['name'=>'Cannot touch stale target'],
+            'approval_transport'=>'chatgpt',
+        ]);
+        $key=hash('sha256',$proposal['request_id']);
+        $this->store->state(static function (array &$state) use ($key): void {
+            $state['approvals'][$key]['expires']=time()-1;
+        });
+        try {
+            $this->approval->executeNative(
+                $this->subject,1,$proposal['request_id'],'api.contacts.update','PATCH'
+            );
+            self::fail('Expired approval executed');
+        } catch (RuntimeException) {
+            self::assertSame(0,$this->api->writes);
+        }
+        $proposal=$this->approval->prepare($this->subject,$this->store->load($this->subject),1,[
+            'route'=>'api.contacts.update','method'=>'PATCH',
+            'route_params'=>['contact'=>7],'record_type'=>'vendor',
+            'body'=>['name'=>'Cannot touch stale target'],
+            'approval_transport'=>'chatgpt',
+        ]);
+        $this->api->name='Changed before native execution';
+        try {
+            $this->approval->executeNative(
+                $this->subject,1,$proposal['request_id'],'api.contacts.update','PATCH'
+            );
+            self::fail('Changed target was executed');
+        } catch (RuntimeException) {
+            self::assertSame(0,$this->api->writes);
+            self::assertSame('outcome_unconfirmed',$this->approval->status(
+                $this->subject,$proposal['request_id']
+            )['status']);
+        }
+    }
+
     public function testPendingFinancialPlanIsEncryptedAndRevocationInvalidatesIt(): void
     {
         $proposal=$this->prepare('PATCH',['name'=>'Sensitive synthetic account metadata']);

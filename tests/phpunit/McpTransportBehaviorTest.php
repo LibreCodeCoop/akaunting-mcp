@@ -115,9 +115,18 @@ final class McpTransportBehaviorTest extends TestCase
         ]);
         self::assertSame($expected,$initialized['result']['protocolVersion']);
         $listed=$this->execute(['jsonrpc'=>'2.0','id'=>8,'method'=>'tools/list']);
-        self::assertCount(12,$listed['result']['tools']);
+        self::assertCount(13,$listed['result']['tools']);
         foreach($listed['result']['tools'] as $tool) {
-            self::assertSame($tool['name']!=='akaunting_prepare_mutation', $tool['annotations']['readOnlyHint']);
+            self::assertSame(
+                !in_array($tool['name'],['akaunting_prepare_mutation',
+                    'akaunting_execute_prepared_mutation'],true),
+                $tool['annotations']['readOnlyHint']
+            );
+            if ($tool['name']==='akaunting_execute_prepared_mutation') {
+                self::assertTrue($tool['annotations']['destructiveHint']);
+                self::assertFalse($tool['annotations']['idempotentHint']);
+                self::assertSame(['mcp:read'],$tool['securitySchemes'][0]['scopes']);
+            }
         }
     }
 

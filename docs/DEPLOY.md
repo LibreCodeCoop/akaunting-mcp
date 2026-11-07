@@ -99,12 +99,12 @@ Use the profiles that match the chosen deployment; the base app and internal Ngi
 ## 5. Confirm behavior without financial changes
 
 - Check HTTPS OAuth metadata and PKCE browser login using an account intended for the connection.
-- Confirm the linked identity with the read-only akaunting_whoami tool and verify that writes require independent human approval.
+- Confirm the linked identity with the read-only `akaunting_whoami` tool and verify, on a synthetic target, that the host requests user confirmation for `akaunting_execute_prepared_mutation` and does not ask for an additional password.
 - Confirm a small authorized company-scoped read and rejection of a company/resource that a synthetic account cannot access.
 - Confirm the internal MCP endpoint is reachable only through the private tunnel.
 - Check that logs contain no passwords, OAuth codes, tokens, financial records or stack traces.
 
-Never use cloned real financial records, production mutations or administrative credentials as a shortcut for integration testing. Native reviewed record modifications require an authenticated, one-time browser approval per action. Restricted NFS-e configuration proposals are available only for reviewed routes; fiscal issue/cancel remain disabled by default and require the additional readiness and deployment gate described in [NFS-e operations](NFSE-WRITES.md).
+Never use cloned real financial records, production mutations or administrative credentials as a shortcut for integration testing. Native reviewed record modifications require an authorized, one-time host-confirmed MCP write (or explicit legacy browser approval) per action. Restricted NFS-e configuration proposals are available only for reviewed routes; fiscal issue/cancel remain disabled by default and require the additional readiness and deployment gate described in [NFS-e operations](NFSE-WRITES.md).
 
 ## Operation, updates and rollback
 

@@ -8,12 +8,12 @@ use RuntimeException;
 
 /**
  * A mutation cannot be performed by an MCP tool. It is executed only after
- * an independent, authenticated, CSRF-protected browser approval by the same
+ * native OAuth-linked host-confirmed tool execution, or legacy browser approval by the same
  * Akaunting user. One approval authorizes exactly one frozen request.
  */
 final class ApprovalService
 {
-    private const TTL = 600;
+    private const TTL = 1800;
     private readonly WriteRouteCatalog $routes;
 
     public function __construct(
@@ -41,6 +41,10 @@ final class ApprovalService
         $params=$args['route_params'] ?? [];
         $body=$args['body'] ?? [];
         $recordType=$args['record_type'] ?? null;
+        $transport=$args['approval_transport'] ?? 'browser';
+        if (!in_array($transport,['browser','chatgpt'],true)) {
+            throw new RuntimeException('Unsupported approval transport');
+        }
         if (!is_string($name) || !is_string($method) || !is_array($params)
             || !is_array($body) || (array_is_list($params) && $params!==[])
             || (array_is_list($body) && $body!==[])) {
@@ -93,6 +97,7 @@ final class ApprovalService
             'route'=>$name,'method'=>$method,'path'=>$route['path'],
             'route_params'=>$params,'body'=>$body,'record_type'=>$recordType,
             'company_id'=>$company,'target_digest'=>$original,
+            'approval_transport'=>$transport,
         ];
         $ticket=bin2hex(random_bytes(32));
         $digest=hash('sha256',$ticket);
@@ -111,11 +116,18 @@ final class ApprovalService
                 'status'=>'pending','expires'=>time()+self::TTL,
             ];
         });
+        if ($transport==='chatgpt') {
+            return [
+                'status'=>'awaiting_host_confirmation','request_id'=>$ticket,
+                'expires_in_seconds'=>self::TTL,'summary'=>$this->summary($plan),
+                'next_step'=>'Invoke akaunting_execute_prepared_mutation with this request_id, company_id, route and method. The ChatGPT host must confirm the write tool call. Do not open a browser or request Akaunting credentials again.',
+            ];
+        }
         return [
             'status'=>'awaiting_human_approval','request_id'=>$ticket,
             'approval_url'=>$this->issuer.'/approve?request='.$ticket,
             'expires_in_seconds'=>self::TTL,'summary'=>$this->summary($plan),
-            'next_step'=>'The user must open approval_url, inspect the exact change and authorize with personal Akaunting credentials. The assistant cannot approve this request.',
+            'next_step'=>'Legacy browser approval requires the user to authenticate separately.',
         ];
     }
 
@@ -185,6 +197,10 @@ final class ApprovalService
             }
             $state['approvals'][$key]['attempts']=$attempts+1;
         });
+        $browserPlan=$this->store->openPlan($entry['sealed']);
+        if (($browserPlan['approval_transport'] ?? 'browser')!=='browser') {
+            throw new RuntimeException('Native approval must be confirmed by the ChatGPT host');
+        }
         $subject=(string)$entry['subject'];
         if ($email==='' || $password==='' || !hash_equals($subject,$this->store->subject($email))) {
             throw new RuntimeException('Approval requires the same Akaunting identity');
@@ -238,6 +254,95 @@ final class ApprovalService
                 'message'=>'Akaunting accepted the approved operation. Review the record through a read tool.',
             ];
         } catch (\Throwable $error) {
+            $this->store->state(static function (array &$state) use ($key): void {
+                $state['approvals'][$key]['status']='outcome_unconfirmed';
+                unset($state['approvals'][$key]['sealed']);
+            });
+            throw $error;
+        }
+    }
+
+    /**
+     * Native MCP tool executor. The ChatGPT host owns the human confirmation
+     * UI for this explicitly non-read-only action. The OAuth identity is reused:
+     * never ask for, accept or transmit credentials supplied by the model.
+     *
+     * A prepared immutable plan can be consumed only once and only by its
+     * original subject, company and login generation. Browser-only proposals
+     * cannot be executed through this route.
+     */
+    public function executeNative(
+        string $subject, int $company, string $ticket,
+        string $expectedRoute, string $expectedMethod, string $confirmation='',
+    ): array {
+        $key=self::ticketKey($ticket);
+        $entry=$this->store->state(static function (array &$state) use ($key,$subject,$company): array {
+            $row=$state['approvals'][$key] ?? null;
+            if (!is_array($row) || ($row['status'] ?? null)!=='pending'
+                || ($row['expires'] ?? 0)<=time()
+                || ($row['subject'] ?? null)!==$subject
+                || ($row['company_id'] ?? null)!==$company) {
+                throw new RuntimeException('Native approval unavailable or no longer pending');
+            }
+            return $row;
+        });
+        $creds=$this->store->load($subject);
+        if ($this->store->generation($subject)!==(int)$entry['generation']
+            || (int)$creds['generation']!==(int)$entry['generation']) {
+            throw new RuntimeException('Linked Akaunting identity changed');
+        }
+        $plan=$this->store->openPlan($entry['sealed']);
+        if (($plan['approval_transport'] ?? 'browser')!=='chatgpt'
+            || $plan['route']!==$expectedRoute || $plan['method']!==$expectedMethod
+            || $plan['company_id']!==$company) {
+            throw new RuntimeException('Native confirmation does not match prepared operation');
+        }
+        if ($plan['method']==='DELETE') {
+            $phrase=str_starts_with($plan['route'],'api.nfse.')?'CANCELAR':'EXCLUIR';
+            if ($confirmation!==$phrase) {
+                throw new RuntimeException('Destructive action requires explicit confirmation phrase');
+            }
+        }
+        // Authenticate the already-linked personal account with the upstream API.
+        $this->api->verify($creds['email'],$creds['password'],$company);
+        $this->store->state(static function (array &$state) use ($key,$subject,$company,$entry): void {
+            $row=$state['approvals'][$key] ?? null;
+            if (!is_array($row) || ($row['status'] ?? null)!=='pending'
+                || ($row['expires'] ?? 0)<=time()
+                || ($row['subject'] ?? null)!==$subject
+                || ($row['company_id'] ?? null)!==$company
+                || ($row['generation'] ?? null)!==$entry['generation']
+                || ($row['sealed'] ?? null)!==$entry['sealed']) {
+                throw new RuntimeException('Native approval already consumed or changed');
+            }
+            $state['approvals'][$key]['status']='executing';
+            unset($state['approvals'][$key]['csrf'],$state['approvals'][$key]['cookie']);
+        });
+        try {
+            $this->api->verify($creds['email'],$creds['password'],$company);
+            $current=$this->target(
+                $creds,$company,$plan['route'],$plan['route_params'],
+                $plan['record_type'],$plan['body']
+            );
+            if ($current!==$plan['target_digest']) {
+                throw new RuntimeException('Target changed since the proposal');
+            }
+            $response=$this->api->mutate(
+                $creds['email'],$creds['password'],$plan['method'],$plan['path'],
+                $company,$plan['body']
+            );
+            $this->store->state(static function (array &$state) use ($key,$response): void {
+                $state['approvals'][$key]['status']='completed';
+                $state['approvals'][$key]['http_status']=$response['http_status'];
+                unset($state['approvals'][$key]['sealed']);
+            });
+            return [
+                'status'=>'completed','http_status'=>$response['http_status'],
+                'company_id'=>$company,'route'=>$plan['route'],
+                'message'=>'The host-confirmed change was accepted. Read back the record to verify the result.',
+            ];
+        } catch (\Throwable $error) {
+            // A timeout may occur AFTER the upstream write. Never retry blindly.
             $this->store->state(static function (array &$state) use ($key): void {
                 $state['approvals'][$key]['status']='outcome_unconfirmed';
                 unset($state['approvals'][$key]['sealed']);

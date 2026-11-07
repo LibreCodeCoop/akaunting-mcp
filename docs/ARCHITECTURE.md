@@ -41,14 +41,14 @@ encrypted credentials. There is no shared cross-user response cache.
 - `src/ApiBrowser.php` and `src/Toolset.php`: authorization-aware reads and approval proposals.
 - `src/NfseReadCatalog.php`, `src/NfseReadService.php` and `src/NfseWriteCatalog.php`:
   reviewed fiscal API contracts, safe response validation and sandbox-only fiscal write preflight.
-- `src/ApprovalService.php` and `src/WriteRouteCatalog.php`: frozen, single-use browser approvals.
+- `src/ApprovalService.php` and `src/WriteRouteCatalog.php`: frozen, single-use native host-confirmed or legacy browser approvals.
 - `src/UserScopeFilter.php` and `src/SettingsScopeFilter.php`: special fail-closed
   projections for unsafe upstream listing endpoints.
 - `src/RecordProjection.php`: output-only field selection; never controls authorization.
 
 ## Tool and route policy
 
-Twelve tools are exposed. Nine are read-only; the additional tools discover mutating routes, prepare browser approvals and read their status. The model cannot execute a mutation. The repository includes a
+Thirteen tools are exposed. Nine are read-only; mutation tools discover reviewed routes, prepare immutable requests, execute a frozen write through a clearly non-read-only native host-confirmed tool, and read status. The default flow uses the existing linked OAuth identity with no separate password; a browser approval remains an explicit fallback. The MCP cannot by itself prove how a host renders its confirmation UI. The repository includes a
 reviewed reference API-route manifest with core and optional module routes.
 The manifest is not an inventory of a customer's installed modules, proof of
 endpoint availability, or evidence of individual authorization. Each target
