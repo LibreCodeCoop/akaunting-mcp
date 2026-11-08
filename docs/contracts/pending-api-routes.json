@@ -100,6 +100,10 @@
     "reason": "Operator fiscal classification writes require a typed reason/evidence schema, state checks, and independent per-operation approval."
   },
   {
+    "route": "api.nfse.settings.category-issuance.store",
+    "reason": "Category fiscal policy writes change prospective issuance behavior; require typed inputs, tenant and category checks, and explicit one-use approval."
+  },
+  {
     "route": "api.nfse.invoices.refresh",
     "reason": "Fiscal recovery is state-changing and requires a receipt-bound approval contract."
   },
