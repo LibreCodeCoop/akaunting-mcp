@@ -51,11 +51,17 @@ final class ApiParityAudit
         }
         $routes = [];
         foreach ($matches as $match) {
-            $routes[] = [
+            $entry = [
                 'name'=>'api.nfse.' . $match[5],
                 'method'=>strtoupper($match[1]),
                 'uri'=>'api/nfse/' . $match[3],
             ];
+            // Route owners explicitly mark safe JSON GET contracts. The
+            // absence of an annotation remains a pending operation.
+            if (str_contains($match[0], "->defaults('mcp_read_contract'")) {
+                $entry['discovered'] = true;
+            }
+            $routes[] = $entry;
         }
         return $routes;
     }
@@ -108,7 +114,18 @@ final class ApiParityAudit
             }
             $seen[$key] = true;
             if (!isset($expected[$name])) {
-                $pending[$name] = true;
+                $bootstrap = $name === 'api.nfse.discovery.index'
+                    && $method === 'GET' && self::normalUri($uri) === 'api/nfse/discovery';
+                $dynamic = ($item['discovered'] ?? false) === true
+                    && $method === 'GET'
+                    && preg_match('~^api/[a-z0-9-]+(?:/(?:[a-z0-9-]+|\{[a-z_]+\}))*$~D',
+                        self::normalUri($uri)) === 1
+                    && !\AkauntingMcp\LiveApiDiscovery::reservedAction($name);
+                if ($bootstrap || $dynamic) {
+                    ++$supported;
+                } else {
+                    $pending[$name] = true;
+                }
             } elseif (!in_array($method, $expected[$name]['verbs'], true)
                 || $expected[$name]['uri'] !== self::normalUri($uri)) {
                 $changed[$name] = true;

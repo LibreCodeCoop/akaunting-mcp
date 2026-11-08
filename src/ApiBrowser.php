@@ -22,9 +22,30 @@ final class ApiBrowser
         $this->catalog=$api->routeCatalog();
     }
 
-    public function catalog(): array
+    /**
+     * Static reviewed routes remain available on older installations; the
+     * live catalog supplies new explicitly annotated operations without an
+     * MCP code or tool schema release.
+     *
+     * @param array<string,string>|null $creds
+     */
+    public function catalog(?array $creds=null, ?int $company=null): array
     {
         $routes = $this->catalog->list();
+        if ($creds !== null && $company !== null) {
+            foreach ((new LiveApiDiscovery($this->api))->routes($creds, $company) as $spec) {
+                $routes[] = [
+                    'route'=>$spec['name'],
+                    'uri'=>$spec['uri'],
+                    'source'=>'live-api',
+                    'parameters'=>$spec['params'],
+                    'required_permission_hints'=>$spec['permissions'],
+                    'scope'=>$spec['scope'],
+                    'response_paths'=>$spec['response_paths'],
+                    'query'=>$spec['query'],
+                ];
+            }
+        }
         return [
             'registered_read_routes'=>$routes,
             'count'=>count($routes),
@@ -36,8 +57,25 @@ final class ApiBrowser
 
     public function read(array $creds, int $company, array $args): array
     {
-        if (is_string($args['route'] ?? null)
-            && str_starts_with($args['route'],'api.field-studio.')) {
+        $name = $args['route'] ?? null;
+        if (!is_string($name) || strlen($name) > 120) {
+            throw new RuntimeException('Missing API route identifier');
+        }
+        // A dynamic declaration cannot replace or weaken a reviewed route.
+        // New named routes are discovered and validated against the live
+        // upstream contract in the same authenticated MCP invocation.
+        $known = array_column($this->catalog->list(), null, 'route');
+        if (!isset($known[$name])) {
+            // Reject obvious mutations and risky historical GET handlers
+            // before consulting upstream discovery. The native declaration
+            // must never override a reviewed write name or method.
+            $writes = array_column((new WriteRouteCatalog())->list(), null, 'route');
+            if (isset($writes[$name]) || LiveApiDiscovery::reservedAction($name)) {
+                throw new RuntimeException('Unapproved side-effecting API route');
+            }
+            return (new DiscoveredReadService($this->api))->read($creds, $company, $args);
+        }
+        if (str_starts_with($name,'api.field-studio.')) {
             return (new FieldStudioApi($this->api))->read($creds,$company,$args);
         }
         if (is_string($args['route'] ?? null) && str_starts_with($args['route'],'api.nfse.')) {

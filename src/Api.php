@@ -17,6 +17,8 @@ class Api
     private ?\CurlHandle $connection = null;
     private ?string $connectionIdentity = null;
     private ?RouteCatalog $catalog = null;
+    /** @var array{path:string,company_id:int,tenant_prefix:bool}|null */
+    private ?array $discoveredRead = null;
 
     public function issuer(): string
     {
@@ -30,13 +32,52 @@ class Api
 
     public function __construct(private readonly Config $config) {}
 
+    /**
+     * Permit exactly one GET derived from an authenticated, validated route
+     * declaration. This temporary permit never applies to a later operation.
+     *
+     * @param array<string,mixed> $approved
+     * @param array<string,int|string> $query
+     * @return array<string,mixed>
+     */
+    public function getDiscovered(
+        string $email, string $password, array $approved, array $query
+    ): array {
+        $path = $approved['path'] ?? null;
+        $company = $approved['company_id'] ?? null;
+        $prefix = $approved['tenant_prefix'] ?? null;
+        if ($this->discoveredRead !== null || !is_string($path)
+            || preg_match('~^/[a-z0-9-]+(?:/[a-z0-9-]+)*$~D', $path) !== 1
+            || !is_int($company) || $company < 1
+            || ($query['company_id'] ?? null) !== $company || !is_bool($prefix)) {
+            throw new RuntimeException('Invalid discovered read authorization');
+        }
+        $this->discoveredRead = [
+            'path'=>$path, 'company_id'=>$company, 'tenant_prefix'=>$prefix,
+        ];
+        try {
+            return $this->get($email, $password, $path, $query);
+        } finally {
+            $this->discoveredRead = null;
+        }
+    }
+
     public function get(string $email, string $password, string $path, array $query = []): array
     {
         // The installed application's reviewed GET route manifest is the only
         // source of discoverable API paths. Legacy read actions with GET side
         // effects (enable/disable/received) are never in that manifest.
         $internal = preg_match('~^/companies/[1-9][0-9]*/owner$~D', $path) === 1;
-        if (!$internal && !$this->routeCatalog()->permitsPath($path)) {
+        $discovered = $this->discoveredRead !== null
+            && $this->discoveredRead['path'] === $path
+            && $this->discoveredRead['company_id'] === ($query['company_id'] ?? null);
+        // Fixed bootstrap path, not a route supplied by the model. The server
+        // permits only authenticated, company-owned discovery metadata.
+        $discoveryBootstrap = $path === '/nfse/discovery'
+            && is_int($query['company_id'] ?? null)
+            && $query['company_id'] > 0;
+        if (!$internal && !$discovered && !$discoveryBootstrap
+            && !$this->routeCatalog()->permitsPath($path)) {
             throw new RuntimeException('API resource not permitted');
         }
         if ($email === '' || $password === '') {
@@ -45,7 +86,8 @@ class Api
         // Akaunting modules register /{company_id}/api/nfse/*, whereas the
         // Core registers /api/*. Keep the native tenant route path intact.
         $modulePrefix='';
-        if (str_starts_with($path,'/nfse/')) {
+        if (str_starts_with($path,'/nfse/')
+            || ($discovered && $this->discoveredRead['tenant_prefix'])) {
             $company=$query['company_id'] ?? null;
             if (!is_int($company)) throw new RuntimeException('NFS-e company ID is required');
             $modulePrefix='/'.self::companyId($company);

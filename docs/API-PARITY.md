@@ -15,6 +15,8 @@ methods and URI templates against the MCP catalogs. It fails closed on:
 - missing, malformed, duplicate or stale entries in the recorded gap list;
 - malformed or unnamed module registrations that the source parser cannot account for.
 
+The optional authenticated live-discovery contract makes explicitly annotated safe GET routes available without an MCP source change. The source parity check therefore accepts only the fixed `api.nfse.discovery.index` bootstrap and routes whose Laravel declaration contains the `mcp_read_contract` annotation; unannotated GETs, POSTs, DELETEs and other operations remain pending or require reviewed adapters. The runtime validates the returned name, URL template, HTTP method, scopes, ACL hints and declared response selectors again before any request.
+
 The versioned `docs/contracts/pending-api-routes.json` records known, **unimplemented**
 operations with a specific explanation. A pending entry is **not available** to MCP
 clients; it does **not** mean that the route is authorized or safe. Reducing this

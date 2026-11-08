@@ -16,7 +16,8 @@ The MCP is an independent, authorization-enforced client of the Akaunting REST A
 ## Data-access boundaries
 
 - Every business request rechecks the linked identity and selected company's membership using the upstream API and its native ACLs.
-- A reviewed, explicit native GET route catalog prevents arbitrary HTTP proxying, unknown endpoints and GET handlers that mutate data. A registered route does not imply that the user is authorized to read it.
+- A reviewed, explicit native GET route catalog prevents arbitrary HTTP proxying, unknown endpoints and GET handlers that mutate data.
+- Optional authenticated live discovery advertises only GET routes explicitly annotated by the installed module with an ownership scope, native read ACL and restricted JSON response selectors. The MCP verifies the manifest and performs each read with the original personal Akaunting credentials, company membership, record ownership and independent result checks. Discovery never enables mutating endpoints or a generic URL proxy. A registered route does not imply that the user is authorized to read it.
 - Company-scoped responses and nested relationships are validated before they reach optional field projection. User/setting resources receive additional allowlist projections and must not forward unauthorized collection metadata.
 - Unexpected tool arguments, invalid IDs, redirect attempts, incompatible record types and unverified tenants fail closed.
 - Sensitive fields such as passwords, authentication secrets, signing material and internal errors must not enter model-visible output or application logs. Financial data that the user **intentionally retrieves** may be processed by ChatGPT; review retention, privacy requirements and permitted data transfers accordingly.
