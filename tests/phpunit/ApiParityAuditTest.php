@@ -87,6 +87,34 @@ final class ApiParityAuditTest extends TestCase
         ]);
     }
 
+    public function testAnnotatedReadAndCapabilityBootstrapAvoidMcpCatalogChurn(): void
+    {
+        $php = <<<'SOURCE'
+            <?php
+            Route::api('nfse', function (): void {
+                Route::get('discovery', [Discover::class,'index'])->name('discovery.index');
+                Route::get('invoices/{invoice}/fiscal-decision', [Decisions::class,'show'])
+                    ->middleware('permission:read-sales-invoices')
+                    ->defaults('mcp_read_contract', [
+                        'version'=>1, 'scope'=>'invoice', 'response_paths'=>['/data/current'],
+                    ])->name('invoices.fiscal-decision.show');
+                Route::post('invoices/{invoice}/fiscal-decision', [Decisions::class,'store'])
+                    ->middleware('permission:update-sales-invoices')
+                    ->name('invoices.fiscal-decision.store');
+            });
+            SOURCE;
+        $source=\ApiParityAudit::fromModuleSource($php);
+        self::assertArrayNotHasKey('discovered', $source[0]);
+        self::assertTrue($source[1]['discovered']);
+        $report=\ApiParityAudit::compare($source, [], [
+            ['route'=>'api.nfse.invoices.fiscal-decision.store',
+                'reason'=>'Requires separately approved and validated fiscal mutation'],
+        ]);
+        self::assertSame(3,$report['total']);
+        self::assertSame(2,$report['supported']);
+        self::assertSame(['api.nfse.invoices.fiscal-decision.store'],$report['pending']);
+    }
+
     public function testLaravelReadsTreatHeadAsPartOfGetAndPreserveWriteMethods(): void
     {
         self::assertSame([
