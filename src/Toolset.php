@@ -70,9 +70,9 @@ final class Toolset
                     'route'=>['type'=>'string','maxLength'=>120,'description'=>'Exact name returned by akaunting_api_routes; e.g. api.departments.index or api.documents.transactions.show.'],
                     'route_params'=>['type'=>'object','description'=>'Named route placeholders: numeric IDs; selected module routes also use typed entity_type/field_key strings.'],
                     'module_filters'=>['type'=>'object',
-                        'description'=>'Reviewed module-specific GET query filters. Field Studio uses entity_type, entity_id, field_key, value and limit; only registered keys/values are accepted by the server.',
+                        'description'=>'Typed query parameters for reviewed or live-discovered GET routes. Only keys and value types declared by the native API are accepted; no arbitrary query forwarding.',
                         'additionalProperties'=>true],
-                    'nfse_filters'=>['type'=>'object','description'=>'Only for reviewed NFS-e JSON GET routes; allowed keys are listed by akaunting_api_routes.',
+                    'nfse_filters'=>['type'=>'object','description'=>'NFS-e GET filters. Existing routes use strict reviewed keys; automatically discovered routes validate keys and types against their live server contract.',
                         'properties'=>[
                             'page'=>['type'=>'integer','minimum'=>1,'maximum'=>10000],
                             'limit'=>['type'=>'integer','minimum'=>1,'maximum'=>50],
@@ -84,7 +84,7 @@ final class Toolset
                             'search'=>['type'=>'string','maxLength'=>200],
                             'lc116'=>['type'=>'string'], 'q'=>['type'=>'string','maxLength'=>100],
                             'number'=>['type'=>'string','pattern'=>'^[1-9][0-9]{0,14}$'],
-                        ],'additionalProperties'=>false],
+                        ],'additionalProperties'=>true],
                     'page'=>['type'=>'integer','minimum'=>1,'maximum'=>10000],
                     'limit'=>['type'=>'integer','minimum'=>1,'maximum'=>50],
                     'search'=>['type'=>'string','maxLength'=>200],
@@ -159,6 +159,7 @@ final class Toolset
                 'registered_api_read_routes'=>count((new RouteCatalog())->list()),
                 'route_discovery_tool'=>'akaunting_api_routes',
                 'read_tool'=>'akaunting_api_read',
+                'automatic_read_discovery'=>'authenticated_module_contracts_only',
                 'nfse_api'=>'reviewed_json_reads_and_browser_approved_configuration; fiscal_emit_cancel_sandbox_only; certificate_upload_not_supported',
                 'user_audit'=>'company_scoped_roles_without_effective_permission_details'];
         }
@@ -203,7 +204,7 @@ final class Toolset
             return UserScopeFilter::page($response, $company, $page);
         }
         if ($name === 'akaunting_api_routes') {
-            return (new ApiBrowser($this->api))->catalog();
+            return (new ApiBrowser($this->api))->catalog($creds, $company);
         }
         if ($name === 'akaunting_api_read') {
             return (new ApiBrowser($this->api))->read($creds,$company,$args);
