@@ -128,6 +128,67 @@ final class NfseWriteTransportTest extends TestCase
         self::assertSame('attested',$result['data']['status']);
     }
 
+    public function testReviewedReadOnlyFiscalPostUsesTenantScopedNativeApi(): void
+    {
+        $api=$this->api();
+        $preview=$api->postReadOnly(
+            'synthetic@example.invalid','synthetic-password',
+            '/nfse/bulk/plan',1,['invoice_ids'=>[7,8]],
+        );
+        self::assertSame(200,$preview['http_status']);
+        self::assertSame(7,$preview['data']['data']['queued'][0]['invoice_id']);
+        $diag=$api->postReadOnly(
+            'synthetic@example.invalid','synthetic-password',
+            '/nfse/settings/vault/diagnostics',1,[],
+        );
+        self::assertSame(200,$diag['http_status']);
+        self::assertSame('operational',$diag['data']['state']);
+        foreach (['/nfse/bulk/dispatch','/nfse/invoices/7/emit'] as $unsafe) {
+            try {
+                $api->postReadOnly(
+                    'synthetic@example.invalid','synthetic-password',$unsafe,1,[],
+                );
+                self::fail('A write endpoint was accepted as a read');
+            } catch (RuntimeException) {
+                self::assertTrue(true);
+            }
+        }
+    }
+
+    public function testOperationalFiscalActionsUseExactTenantScopedJsonRoutes(): void
+    {
+        $api=$this->api();
+        $dps=$api->mutate(
+            'synthetic@example.invalid','synthetic-password',
+            'POST','/nfse/dps/advance',1,[
+                'expected_next_number'=>'900000000000008',
+                'next_number'=>'900000000000100',
+                'reason'=>'Synthetic documented adjustment for test',
+                'confirmed'=>true,
+            ],
+        );
+        self::assertSame(200,$dps['http_status']);
+        self::assertSame('900000000000100',$dps['data']['data']['next_number']);
+        $refresh=$api->mutate(
+            'synthetic@example.invalid','synthetic-password',
+            'POST','/nfse/invoices/7/refresh',1,[
+                'nfse_receipt_id'=>12,'nfse_force_ajax'=>true,
+            ],
+        );
+        self::assertSame('synthetic_refreshed',$refresh['data']['data']['status']);
+        $bulk=$api->mutate(
+            'synthetic@example.invalid','synthetic-password',
+            'POST','/nfse/bulk/dispatch',1,['invoice_ids'=>[7,8]],
+        );
+        self::assertSame(202,$bulk['http_status']);
+        self::assertSame(2,$bulk['data']['data']['dispatched']);
+        $this->expectException(RuntimeException::class);
+        $api->mutate(
+            'synthetic@example.invalid','synthetic-password',
+            'POST','/nfse/bulk/plan',1,['invoice_ids'=>[7,8]],
+        );
+    }
+
     public function testUnknownFiscalPathCannotReachHttpTransport(): void
     {
         $this->expectException(RuntimeException::class);
