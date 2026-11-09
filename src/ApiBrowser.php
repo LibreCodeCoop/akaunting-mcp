@@ -82,7 +82,8 @@ final class ApiBrowser
             return (new NfseReadService($this->api))->read($creds,$company,$args);
         }
         if (array_key_exists('nfse_filters',$args)
-            || array_key_exists('module_filters',$args)) {
+            || array_key_exists('module_filters',$args)
+            || array_key_exists('post_body',$args)) {
             throw new RuntimeException('Module filters are not valid for core routes');
         }
         // Validate before any upstream API call; apply only after tenant and
