@@ -11,7 +11,8 @@ use RuntimeException;
 /**
  * Small, reviewed NFS-e mutation surface. The module remains the fiscal
  * authority; this catalog only restricts MCP proposals and their approval.
- * No certificate, Vault credential, arbitrary path or production fiscal POST.
+ * No certificate, Vault credential or arbitrary path. Fiscal writes require
+ * individual human approval and the installed module's issuance safeguards.
  */
 final class NfseWriteCatalog
 {
@@ -85,7 +86,7 @@ final class NfseWriteCatalog
                 'required_permission_hints'=>[$spec['permission']],
                 'human_approval'=>'required_for_every_request',
                 'enabled'=>!$fiscalCommand || getenv('MCP_NFSE_FISCAL_WRITES_ENABLED')==='true',
-                'fiscal_environment'=>$fiscalCommand?'production_restricted_only':'company_scoped_configuration',
+                'fiscal_environment'=>$fiscalCommand?'production_and_restricted':'company_scoped_configuration',
             ];
         }
         return $out;
@@ -154,11 +155,11 @@ final class NfseWriteCatalog
                 } elseif ($value!==null && (!is_string($value) || strlen($value)>255)) {
                     throw new RuntimeException('Invalid fiscal profile value');
                 }
-                // Do not let an MCP configuration proposal silently switch
-                // automatic issuance on or activate the production gateway.
-                if (($key==='sandbox_mode' && $value!==true)
-                    || ($key==='emission_policy' && $value!=='manual')) {
-                    throw new RuntimeException('Fiscal MCP configuration must remain manual and restricted');
+                // Switching environment or enabling automatic issuance is a
+                // separate, single-use approved profile mutation, never a read.
+                if ($key==='emission_policy'
+                    && !in_array($value,['manual','emit_on_send'],true)) {
+                    throw new RuntimeException('Unsupported fiscal emission policy');
                 }
             }
             return;
@@ -374,7 +375,9 @@ final class NfseWriteCatalog
                 $profile['fiscal_parameters']['sandbox_mode']??null,
                 FILTER_VALIDATE_BOOL,FILTER_NULL_ON_FAILURE
             );
-            if ($sandbox!==true) throw new RuntimeException('Fiscal MCP writes require production-restricted environment');
+            if ($sandbox===null) {
+                throw new RuntimeException('Fiscal environment must be explicitly configured');
+            }
             if (getenv('MCP_NFSE_FISCAL_WRITES_ENABLED')!=='true') {
                 throw new RuntimeException('Fiscal MCP issue/cancel gate is disabled');
             }
@@ -439,9 +442,18 @@ final class NfseWriteCatalog
                 $readiness=$reader->read($creds,$company,[
                     'route'=>'api.nfse.dps.readiness',
                 ])['response']['data']??null;
-                if (!is_array($readiness) || ($readiness['mechanically_ready']??null)!==true
-                    || ($readiness['environment']??null)!==2) {
-                    throw new RuntimeException('Fiscal DPS series is not ready for restricted issuance');
+                $series=(string)($profile['fiscal_parameters']['dps_series']??'');
+                if (preg_match('/^[0-9]{1,5}$/D',$series)!==1
+                    || (int)$series<1 || (int)$series>49999) {
+                    throw new RuntimeException('Fiscal DPS series is not configured');
+                }
+                $series=str_pad((string)(int)$series,5,'0',STR_PAD_LEFT);
+                if (!is_array($readiness)
+                    || ($readiness['mechanically_ready']??null)!==true
+                    || ($readiness['company_id']??null)!==$company
+                    || ($readiness['environment']??null)!==($sandbox?2:1)
+                    || ($readiness['series']??null)!==$series) {
+                    throw new RuntimeException('Fiscal DPS authority does not match the approved company, environment and series');
                 }
                 $preview=$reader->read($creds,$company,[
                     'route'=>'api.nfse.invoices.service-preview',

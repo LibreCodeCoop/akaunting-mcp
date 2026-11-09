@@ -101,7 +101,7 @@ final class Toolset
         unset($tool);
         $writeRoutes = [
             ['name'=>'akaunting_mutation_routes',
-                'description'=>'List reviewed Akaunting API mutations. Each change requires user-confirmed native tool execution or the legacy browser approval; restricted fiscal issuance and cancellation remain sandbox-only.',
+                'description'=>'List reviewed Akaunting API mutations. Each change requires user-confirmed native tool execution or the legacy browser approval; fiscal issuance and cancellation require a reconciled authority in the selected environment.',
                 'inputSchema'=>['type'=>'object','properties'=>['company_id'=>$company], 'required'=>['company_id']]],
             ['name'=>'akaunting_prepare_mutation',
                 'description'=>'PREPARE ONLY: validate and freeze an Akaunting mutation. By default returns a request ID for a user-confirmed native ChatGPT write tool call; no browser login or password. Legacy approval_transport=browser remains available. No records are changed by prepare.',
@@ -160,7 +160,7 @@ final class Toolset
                 'route_discovery_tool'=>'akaunting_api_routes',
                 'read_tool'=>'akaunting_api_read',
                 'automatic_read_discovery'=>'authenticated_module_contracts_only',
-                'nfse_api'=>'reviewed_json_reads_and_browser_approved_configuration; fiscal_emit_cancel_sandbox_only; certificate_upload_not_supported',
+                'nfse_api'=>'reviewed_json_reads_and_browser_approved_configuration; fiscal_write_per_environment_with_approval; certificate_upload_not_supported',
                 'user_audit'=>'company_scoped_roles_without_effective_permission_details'];
         }
         $company = ($name === 'akaunting_list_companies') ? $creds['company_id'] : ($args['company_id'] ?? null);
