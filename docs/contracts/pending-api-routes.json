@@ -72,14 +72,6 @@
     "reason": "Imported fiscal bill draft needs typed input, company isolation, and human review."
   },
   {
-    "route": "api.nfse.bulk.dispatch",
-    "reason": "Bulk issuance requires bounded batch approval, durable recovery, and idempotency."
-  },
-  {
-    "route": "api.nfse.bulk.plan",
-    "reason": "Bulk preview uses a POST and requires a confirmed non-mutating contract."
-  },
-  {
     "route": "api.nfse.certificates.inspect",
     "reason": "Certificate inspection accepts sensitive file input, needing a secure browser handoff."
   },
@@ -92,20 +84,8 @@
     "reason": "Tax evidence export returns a file and requires a protected binary transport."
   },
   {
-    "route": "api.nfse.dps.advance",
-    "reason": "Fiscal sequence advancement needs authority and concurrency checks with approval."
-  },
-  {
     "route": "api.nfse.invoices.fiscal-decision.store",
     "reason": "Operator fiscal classification writes require a typed reason/evidence schema, state checks, and independent per-operation approval."
-  },
-  {
-    "route": "api.nfse.settings.category-issuance.store",
-    "reason": "Category fiscal policy writes change prospective issuance behavior; require typed inputs, tenant and category checks, and explicit one-use approval."
-  },
-  {
-    "route": "api.nfse.invoices.refresh",
-    "reason": "Fiscal recovery is state-changing and requires a receipt-bound approval contract."
   },
   {
     "route": "api.nfse.receipts.artifacts.download",
@@ -114,6 +94,10 @@
   {
     "route": "api.nfse.settings.artifacts.update",
     "reason": "WebDAV destination and credentials require secured field handling and approval."
+  },
+  {
+    "route": "api.nfse.settings.category-issuance.store",
+    "reason": "Category fiscal policy writes change prospective issuance behavior; require typed inputs, tenant and category checks, and explicit one-use approval."
   },
   {
     "route": "api.nfse.settings.company-profiles.cleanup",
@@ -126,10 +110,6 @@
   {
     "route": "api.nfse.settings.company-profiles.store",
     "reason": "Company profile creation needs tenant and tax identity validation."
-  },
-  {
-    "route": "api.nfse.settings.vault.diagnostics",
-    "reason": "Vault diagnostics can touch external credentials and need bounded result handling."
   },
   {
     "route": "api.nfse.settings.vault.update",
