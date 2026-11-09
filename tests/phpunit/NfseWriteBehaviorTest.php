@@ -21,7 +21,7 @@ final class NfseWriteBehaviorTest extends TestCase
     private string $directory;
     private Store $store;
     private string $subject;
-    private Api $api;
+    private Api $client;
     private ApprovalService $approval;
     private string|false $previousFiscalFlag;
 
@@ -39,11 +39,14 @@ final class NfseWriteBehaviorTest extends TestCase
         );
         $this->store=new Store($config);
         $this->subject=$this->store->saveLogin('member@example.invalid','correct-password',1);
-        $this->api=new class($config) extends Api {
+        $this->client=new class($config) extends Api {
             public int $writes=0;
             public array $lastWrite=[];
             public bool $sandbox=true;
             public bool $ready=true;
+            public int $dpsEnvironment=2;
+            public int $dpsCompany=1;
+            public string $dpsSeries='00001';
             public bool $profileReady=true;
             public int $receiptId=0;
             public string $receiptState='emitted';
@@ -64,7 +67,10 @@ final class NfseWriteBehaviorTest extends TestCase
                 if ($path==='/nfse/settings/company-profiles') {
                     return ['profiles'=>[[
                         'company_id'=>1,'status'=>'active',
-                        'fiscal_parameters'=>['sandbox_mode'=>$this->sandbox?'1':'0'],
+                        'fiscal_parameters'=>[
+                            'sandbox_mode'=>$this->sandbox?'1':'0',
+                            'dps_series'=>'00001',
+                        ],
                         'version'=>$this->profileVersion,
                     ]], 'eligible_companies'=>[]];
                 }
@@ -117,7 +123,8 @@ final class NfseWriteBehaviorTest extends TestCase
                 }
                 if ($path==='/nfse/dps/readiness') {
                     return ['data'=>[
-                        'company_id'=>1,'environment'=>2,'mechanically_ready'=>$this->ready,
+                        'company_id'=>$this->dpsCompany,'environment'=>$this->dpsEnvironment,
+                        'series'=>$this->dpsSeries,'mechanically_ready'=>$this->ready,
                         'reasons'=>$this->ready?[]:['series_inactive'],
                         'external_reconciliation'=>'not_proven_by_this_endpoint',
                     ]];
@@ -133,7 +140,7 @@ final class NfseWriteBehaviorTest extends TestCase
                 return ['http_status'=>$method==='DELETE'?204:200];
             }
         };
-        $this->approval=new ApprovalService($this->store,$this->api,$config->issuer);
+        $this->approval=new ApprovalService($this->store,$this->client,$config->issuer);
     }
 
     protected function tearDown(): void
@@ -198,13 +205,113 @@ final class NfseWriteBehaviorTest extends TestCase
             ['fiscal_parameters'=>['emission_policy'=>'manual','sandbox_mode'=>true]],
         );
         self::assertSame('awaiting_human_approval',$proposal['status']);
-        self::assertSame(0,$this->api->writes);
+        self::assertSame(0,$this->client->writes);
         self::assertSame('completed',$this->approve($proposal)['status']);
-        self::assertSame(1,$this->api->writes);
-        self::assertSame('/nfse/settings/company-profiles/1',$this->api->lastWrite['path']);
-        self::assertSame(1,$this->api->lastWrite['companyId']);
-        self::assertArrayNotHasKey('company_id',$this->api->lastWrite['body']);
-        self::assertSame('manual',$this->api->lastWrite['body']['fiscal_parameters']['emission_policy']);
+        self::assertSame(1,$this->client->writes);
+        self::assertSame('/nfse/settings/company-profiles/1',$this->client->lastWrite['path']);
+        self::assertSame(1,$this->client->lastWrite['companyId']);
+        self::assertArrayNotHasKey('company_id',$this->client->lastWrite['body']);
+        self::assertSame('manual',$this->client->lastWrite['body']['fiscal_parameters']['emission_policy']);
+    }
+
+    public function testProductionAndAutomaticPolicyChangesRequireASeparateConfirmedProfileWrite(): void
+    {
+        $proposal=$this->prepare(
+            'api.nfse.settings.company-profiles.update','PATCH',['companyId'=>1],
+            ['fiscal_parameters'=>['sandbox_mode'=>false,'emission_policy'=>'emit_on_send']],
+        );
+        self::assertSame('awaiting_human_approval',$proposal['status']);
+        self::assertSame(0,$this->client->writes);
+        self::assertSame('completed',$this->approve($proposal)['status']);
+        self::assertSame(1,$this->client->writes);
+        self::assertFalse($this->client->lastWrite['body']['fiscal_parameters']['sandbox_mode']);
+        self::assertSame('emit_on_send',
+            $this->client->lastWrite['body']['fiscal_parameters']['emission_policy']);
+    }
+
+    public function testProductionIssueRequiresMatchingAuthorityAndNewApproval(): void
+    {
+        $this->client->sandbox=false;
+        try {
+            $this->prepare('api.nfse.invoices.emit','POST',['invoice'=>7],[
+                'nfse_force_ajax'=>true,
+            ]);
+            self::fail('Restricted series must not authorize production');
+        } catch (RuntimeException) {
+            self::assertSame(0,$this->client->writes);
+        }
+        $this->client->dpsEnvironment=1;
+        $proposal=$this->prepare('api.nfse.invoices.emit','POST',['invoice'=>7],[
+            'nfse_force_ajax'=>true,
+        ]);
+        self::assertSame(0,$this->client->writes);
+        self::assertSame('awaiting_human_approval',$proposal['status']);
+        self::assertSame('completed',$this->approve($proposal)['status']);
+        self::assertSame(1,$this->client->writes);
+    }
+
+    public function testProductionIssueRejectsForeignOrDifferentSeriesDpsAuthority(): void
+    {
+        $this->client->sandbox=false;
+        $this->client->dpsEnvironment=1;
+        foreach ([
+            ['dpsCompany'=>2,'dpsSeries'=>'00001'],
+            ['dpsCompany'=>1,'dpsSeries'=>'00002'],
+        ] as $invalid) {
+            $this->client->dpsCompany=$invalid['dpsCompany'];
+            $this->client->dpsSeries=$invalid['dpsSeries'];
+            try {
+                $this->prepare('api.nfse.invoices.emit','POST',['invoice'=>7],[
+                    'nfse_force_ajax'=>true,
+                ]);
+                self::fail('Unrelated DPS authority must not permit an issuance');
+            } catch (RuntimeException) {
+                self::assertSame(0,$this->client->writes);
+            }
+        }
+    }
+
+    public function testNativeHostConfirmedProductionEmissionIsSingleUse(): void
+    {
+        $this->client->sandbox=false;
+        $this->client->dpsEnvironment=1;
+        $proposal=$this->approval->prepare(
+            $this->subject,$this->store->load($this->subject),1,[
+                'route'=>'api.nfse.invoices.emit','method'=>'POST',
+                'route_params'=>['invoice'=>7],
+                'body'=>['nfse_force_ajax'=>true],
+                'approval_transport'=>'chatgpt',
+            ],
+        );
+        self::assertSame('awaiting_host_confirmation',$proposal['status']);
+        self::assertSame(0,$this->client->writes);
+        self::assertSame('completed',$this->approval->executeNative(
+            $this->subject,1,$proposal['request_id'],'api.nfse.invoices.emit','POST','',
+        )['status']);
+        self::assertSame(1,$this->client->writes);
+        $this->expectException(RuntimeException::class);
+        $this->approval->executeNative(
+            $this->subject,1,$proposal['request_id'],'api.nfse.invoices.emit','POST','',
+        );
+    }
+
+    public function testProductionEnvironmentChangeRevokesPreparedFiscalWrite(): void
+    {
+        $this->client->sandbox=false;
+        $this->client->dpsEnvironment=1;
+        $proposal=$this->prepare('api.nfse.invoices.emit','POST',['invoice'=>7],[
+            'nfse_force_ajax'=>true,
+        ]);
+        $this->client->sandbox=true;
+        $this->client->dpsEnvironment=2;
+        try {
+            $this->approve($proposal);
+            self::fail('A fiscal environment change must invalidate a proposed POST');
+        } catch (RuntimeException) {
+            self::assertSame(0,$this->client->writes);
+            self::assertSame('outcome_unconfirmed',
+                $this->approval->status($this->subject,$proposal['request_id'])['status']);
+        }
     }
 
     public function testProfileChangeDuringApprovalIsNotExecuted(): void
@@ -213,12 +320,12 @@ final class NfseWriteBehaviorTest extends TestCase
             'api.nfse.settings.company-profiles.update','PATCH',['companyId'=>1],
             ['fiscal_parameters'=>['emission_policy'=>'manual']],
         );
-        $this->api->profileVersion++;
+        $this->client->profileVersion++;
         $this->expectException(RuntimeException::class);
         try {
             $this->approve($proposal);
         } finally {
-            self::assertSame(0,$this->api->writes);
+            self::assertSame(0,$this->client->writes);
             self::assertSame('outcome_unconfirmed',
                 $this->approval->status($this->subject,$proposal['request_id'])['status']);
         }
@@ -235,7 +342,7 @@ final class NfseWriteBehaviorTest extends TestCase
                     ['fiscal_parameters'=>$index===0?['sandbox_mode'=>true]:['pfx_password'=>'hidden']]);
                 self::fail('Unsafe profile mutation accepted');
             } catch (RuntimeException) {
-                self::assertSame(0,$this->api->writes);
+                self::assertSame(0,$this->client->writes);
             }
         }
     }
@@ -249,20 +356,20 @@ final class NfseWriteBehaviorTest extends TestCase
         ];
         $proposal=$this->prepare('api.nfse.settings.tax-associations.store','POST',[],$body);
         self::assertSame('completed',$this->approve($proposal)['status']);
-        self::assertArrayNotHasKey('company_id',$this->api->lastWrite['body']);
+        self::assertArrayNotHasKey('company_id',$this->client->lastWrite['body']);
         try {
             $this->prepare('api.nfse.settings.tax-associations.store','POST',[],
                 [...$body,'tax_id'=>8]);
             self::fail('Unknown tax accepted');
         } catch (RuntimeException) {
-            self::assertSame(1,$this->api->writes);
+            self::assertSame(1,$this->client->writes);
         }
         try {
             $this->prepare('api.nfse.settings.tax-associations.store','POST',[],
                 [...$body,'acknowledge'=>false]);
             self::fail('Unconfirmed fiscal association accepted');
         } catch (RuntimeException) {
-            self::assertSame(1,$this->api->writes);
+            self::assertSame(1,$this->client->writes);
         }
     }
 
@@ -287,27 +394,27 @@ final class NfseWriteBehaviorTest extends TestCase
     public function testIssuanceIsBlockedUntilRestrictedDpsAndFiscalProfileAreReady(): void
     {
         $body=['nfse_force_ajax'=>true];
-        $this->api->ready=false;
+        $this->client->ready=false;
         try {
             $this->prepare('api.nfse.invoices.emit','POST',['invoice'=>7],$body);
             self::fail('Inactive DPS was accepted');
         } catch (RuntimeException) {
-            self::assertSame(0,$this->api->writes);
+            self::assertSame(0,$this->client->writes);
         }
-        $this->api->ready=true;
-        $this->api->profileReady=false;
+        $this->client->ready=true;
+        $this->client->profileReady=false;
         try {
             $this->prepare('api.nfse.invoices.emit','POST',['invoice'=>7],$body);
             self::fail('Unready fiscal profile was accepted');
         } catch (RuntimeException) {
-            self::assertSame(0,$this->api->writes);
+            self::assertSame(0,$this->client->writes);
         }
-        $this->api->profileReady=true;
+        $this->client->profileReady=true;
         $proposal=$this->prepare('api.nfse.invoices.emit','POST',['invoice'=>7],$body);
         self::assertSame('awaiting_human_approval',$proposal['status']);
-        self::assertSame(0,$this->api->writes);
+        self::assertSame(0,$this->client->writes);
         self::assertSame('completed',$this->approve($proposal)['status']);
-        self::assertSame('/nfse/invoices/7/emit',$this->api->lastWrite['path']);
+        self::assertSame('/nfse/invoices/7/emit',$this->client->lastWrite['path']);
     }
 
     public function testReceiptCreatedAfterApprovalPreparationBlocksEmissionReplay(): void
@@ -315,18 +422,18 @@ final class NfseWriteBehaviorTest extends TestCase
         $proposal=$this->prepare(
             'api.nfse.invoices.emit','POST',['invoice'=>7],['nfse_force_ajax'=>true],
         );
-        $this->api->receiptId=12;
+        $this->client->receiptId=12;
         $this->expectException(RuntimeException::class);
         try {
             $this->approve($proposal);
         } finally {
-            self::assertSame(0,$this->api->writes);
+            self::assertSame(0,$this->client->writes);
         }
     }
 
     public function testFiscalCancellationRequiresCurrentReceiptAndCancelPhrase(): void
     {
-        $this->api->receiptId=12;
+        $this->client->receiptId=12;
         $body=[
             'nfse_receipt_id'=>12,'cancel_reason'=>'9',
             'cancel_justification'=>'Synthetic cancellation with operator approval',
@@ -340,44 +447,44 @@ final class NfseWriteBehaviorTest extends TestCase
             );
             self::fail('Generic delete phrase authorized a fiscal cancellation');
         } catch (RuntimeException) {
-            self::assertSame(0,$this->api->writes);
+            self::assertSame(0,$this->client->writes);
         }
         self::assertSame('completed',$this->approval->decide(
             $view['request_id'],$view['csrf'],$view['cookie'],
             'approve','member@example.invalid','correct-password','CANCELAR',
         )['status']);
-        self::assertSame('DELETE',$this->api->lastWrite['method']);
-        self::assertSame('/nfse/invoices/7',$this->api->lastWrite['path']);
-        self::assertSame(12,$this->api->lastWrite['body']['nfse_receipt_id']);
+        self::assertSame('DELETE',$this->client->lastWrite['method']);
+        self::assertSame('/nfse/invoices/7',$this->client->lastWrite['path']);
+        self::assertSame(12,$this->client->lastWrite['body']['nfse_receipt_id']);
     }
 
     public function testReemissionRequiresCancelledCurrentReceiptAndBrowserApproval(): void
     {
-        $this->api->receiptId=12;
-        $this->api->receiptState='cancelled';
+        $this->client->receiptId=12;
+        $this->client->receiptState='cancelled';
         $proposal=$this->prepare('api.nfse.invoices.reemit','POST',['invoice'=>7],[
             'nfse_receipt_id'=>12,'nfse_force_ajax'=>true,
         ]);
         self::assertSame('awaiting_human_approval',$proposal['status']);
-        self::assertSame(0,$this->api->writes);
+        self::assertSame(0,$this->client->writes);
         self::assertSame('completed',$this->approve($proposal)['status']);
-        self::assertSame(1,$this->api->writes);
-        self::assertSame('POST',$this->api->lastWrite['method']);
-        self::assertSame('/nfse/invoices/7/reemit',$this->api->lastWrite['path']);
-        self::assertSame(12,$this->api->lastWrite['body']['nfse_receipt_id']);
+        self::assertSame(1,$this->client->writes);
+        self::assertSame('POST',$this->client->lastWrite['method']);
+        self::assertSame('/nfse/invoices/7/reemit',$this->client->lastWrite['path']);
+        self::assertSame(12,$this->client->lastWrite['body']['nfse_receipt_id']);
     }
 
     public function testReemissionRejectsActiveReceiptAndUnreviewedFields(): void
     {
-        $this->api->receiptId=12;
+        $this->client->receiptId=12;
         $body=['nfse_receipt_id'=>12,'nfse_force_ajax'=>true];
         try {
             $this->prepare('api.nfse.invoices.reemit','POST',['invoice'=>7],$body);
             self::fail('Active fiscal receipt was allowed to reemit');
         } catch (RuntimeException) {
-            self::assertSame(0,$this->api->writes);
+            self::assertSame(0,$this->client->writes);
         }
-        $this->api->receiptState='cancelled';
+        $this->client->receiptState='cancelled';
         foreach ([
             ['nfse_receipt_id'=>11],
             ['nfse_receipt_id'=>0],
@@ -390,50 +497,50 @@ final class NfseWriteBehaviorTest extends TestCase
                 ]);
                 self::fail('Unsafe fiscal reemission proposal was allowed');
             } catch (RuntimeException) {
-                self::assertSame(0,$this->api->writes);
+                self::assertSame(0,$this->client->writes);
             }
         }
     }
 
     public function testReemissionDetectsFiscalStateChangeAfterApprovalPreparation(): void
     {
-        $this->api->receiptId=12;
-        $this->api->receiptState='cancelled';
+        $this->client->receiptId=12;
+        $this->client->receiptState='cancelled';
         $proposal=$this->prepare('api.nfse.invoices.reemit','POST',['invoice'=>7],[
             'nfse_receipt_id'=>12,'nfse_force_ajax'=>true,
         ]);
-        $this->api->receiptState='emitted';
+        $this->client->receiptState='emitted';
         $this->expectException(RuntimeException::class);
         try {
             $this->approve($proposal);
         } finally {
-            self::assertSame(0,$this->api->writes);
+            self::assertSame(0,$this->client->writes);
             self::assertSame('outcome_unconfirmed',
                 $this->approval->status($this->subject,$proposal['request_id'])['status']);
         }
     }
 
-    public function testReemissionRejectsProductionOrUnreadyDps(): void
+    public function testReemissionRejectsMismatchedEnvironmentOrUnreadyDps(): void
     {
-        $this->api->receiptId=12;
-        $this->api->receiptState='cancelled';
+        $this->client->receiptId=12;
+        $this->client->receiptState='cancelled';
         $body=['nfse_receipt_id'=>12,'nfse_force_ajax'=>true];
-        $this->api->sandbox=false;
+        $this->client->sandbox=false;
         try {
             $this->prepare('api.nfse.invoices.reemit','POST',['invoice'=>7],$body);
-            self::fail('Production fiscal reemission was allowed');
+            self::fail('Restricted authority must not authorize production reemission');
         } catch (RuntimeException) {
-            self::assertSame(0,$this->api->writes);
+            self::assertSame(0,$this->client->writes);
         }
-        $this->api->sandbox=true;
-        $this->api->ready=false;
+        $this->client->sandbox=true;
+        $this->client->ready=false;
         $this->expectException(RuntimeException::class);
         $this->prepare('api.nfse.invoices.reemit','POST',['invoice'=>7],$body);
     }
 
     public function testSubstitutionRequiresCurrentEmittedReceiptAndIndependentApproval(): void
     {
-        $this->api->receiptId=12;
+        $this->client->receiptId=12;
         $proposal=$this->prepare('api.nfse.invoices.substitute','POST',['invoice'=>7],[
             'nfse_substitution_receipt_id'=>12,
             'nfse_substitution_reason'=>'05',
@@ -441,17 +548,17 @@ final class NfseWriteBehaviorTest extends TestCase
             'nfse_force_ajax'=>true,
         ]);
         self::assertSame('awaiting_human_approval',$proposal['status']);
-        self::assertSame(0,$this->api->writes);
+        self::assertSame(0,$this->client->writes);
         self::assertSame('completed',$this->approve($proposal)['status']);
-        self::assertSame(1,$this->api->writes);
-        self::assertSame('POST',$this->api->lastWrite['method']);
-        self::assertSame('/nfse/invoices/7/substitute',$this->api->lastWrite['path']);
-        self::assertSame(12,$this->api->lastWrite['body']['nfse_substitution_receipt_id']);
+        self::assertSame(1,$this->client->writes);
+        self::assertSame('POST',$this->client->lastWrite['method']);
+        self::assertSame('/nfse/invoices/7/substitute',$this->client->lastWrite['path']);
+        self::assertSame(12,$this->client->lastWrite['body']['nfse_substitution_receipt_id']);
     }
 
     public function testSubstitutionRejectsWrongReceiptStatusAndUnexpectedFields(): void
     {
-        $this->api->receiptId=12;
+        $this->client->receiptId=12;
         $base=[
             'nfse_substitution_receipt_id'=>12,
             'nfse_substitution_reason'=>'05',
@@ -476,88 +583,133 @@ final class NfseWriteBehaviorTest extends TestCase
                 ]);
                 self::fail('Unsafe substitution proposal was prepared');
             } catch (RuntimeException) {
-                self::assertSame(0,$this->api->writes);
+                self::assertSame(0,$this->client->writes);
             }
         }
         foreach (['cancelled','substituted','processing'] as $state) {
-            $this->api->receiptState=$state;
+            $this->client->receiptState=$state;
             try {
                 $this->prepare('api.nfse.invoices.substitute','POST',['invoice'=>7],$base);
                 self::fail('Non-emitted receipt was accepted for substitution');
             } catch (RuntimeException) {
-                self::assertSame(0,$this->api->writes);
+                self::assertSame(0,$this->client->writes);
             }
         }
     }
 
     public function testSubstitutionIsBlockedWhenReceiptChangesBeforeBrowserApproval(): void
     {
-        $this->api->receiptId=12;
+        $this->client->receiptId=12;
         $proposal=$this->prepare('api.nfse.invoices.substitute','POST',['invoice'=>7],[
             'nfse_substitution_receipt_id'=>12,
             'nfse_substitution_reason'=>'05',
             'nfse_substitution_description'=>'Synthetic correction under independent approval',
             'nfse_force_ajax'=>true,
         ]);
-        $this->api->receiptId=13;
+        $this->client->receiptId=13;
         $this->expectException(RuntimeException::class);
         try {
             $this->approve($proposal);
         } finally {
-            self::assertSame(0,$this->api->writes);
+            self::assertSame(0,$this->client->writes);
             self::assertSame('outcome_unconfirmed',
                 $this->approval->status($this->subject,$proposal['request_id'])['status']);
         }
     }
 
-    public function testSubstitutionRequiresRestrictedEnvironmentAndReadyDps(): void
+    public function testSubstitutionRequiresMatchingEnvironmentAndReadyDps(): void
     {
-        $this->api->receiptId=12;
+        $this->client->receiptId=12;
         $body=[
             'nfse_substitution_receipt_id'=>12,
             'nfse_substitution_reason'=>'05',
             'nfse_substitution_description'=>'Synthetic correction for fiscal validation',
             'nfse_force_ajax'=>true,
         ];
-        $this->api->sandbox=false;
+        $this->client->sandbox=false;
         try {
             $this->prepare('api.nfse.invoices.substitute','POST',['invoice'=>7],$body);
-            self::fail('Production substitution must be disallowed');
+            self::fail('Restricted authority must not authorize production substitution');
         } catch (RuntimeException) {
-            self::assertSame(0,$this->api->writes);
+            self::assertSame(0,$this->client->writes);
         }
-        $this->api->sandbox=true;
-        $this->api->ready=false;
+        $this->client->sandbox=true;
+        $this->client->ready=false;
         try {
             $this->prepare('api.nfse.invoices.substitute','POST',['invoice'=>7],$body);
             self::fail('Unready DPS was allowed');
         } catch (RuntimeException) {
-            self::assertSame(0,$this->api->writes);
+            self::assertSame(0,$this->client->writes);
         }
-        $this->api->ready=true;
-        $this->api->profileReady=false;
+        $this->client->ready=true;
+        $this->client->profileReady=false;
         $this->expectException(RuntimeException::class);
         $this->prepare('api.nfse.invoices.substitute','POST',['invoice'=>7],$body);
     }
 
-    public function testFiscalWritesRejectProductionAndForeignInvoices(): void
+    public function testFiscalWritesRejectMismatchedEnvironmentAndForeignInvoices(): void
     {
-        $this->api->sandbox=false;
+        $this->client->sandbox=false;
         try {
             $this->prepare('api.nfse.invoices.emit','POST',['invoice'=>7],[
                 'nfse_force_ajax'=>true,
             ]);
-            self::fail('Production fiscal emission was allowed');
+            self::fail('Restricted authority must not authorize production emission');
         } catch (RuntimeException) {
-            self::assertSame(0,$this->api->writes);
+            self::assertSame(0,$this->client->writes);
         }
-        $this->api->sandbox=true;
+        $this->client->sandbox=true;
         $foreignCompany=2;
-        $this->api->invoiceCompany=$foreignCompany;
+        $this->client->invoiceCompany=$foreignCompany;
         $this->expectException(RuntimeException::class);
         $this->prepare('api.nfse.invoices.emit','POST',['invoice'=>7],[
             'nfse_force_ajax'=>true,
         ]);
+    }
+
+    public function testProductionCancellationPreservesCurrentReceiptAndConfirmationPhrase(): void
+    {
+        $this->client->sandbox=false;
+        $this->client->receiptId=12;
+        $proposal=$this->prepare('api.nfse.invoices.cancel','DELETE',['invoice'=>7],[
+            'nfse_receipt_id'=>12,'cancel_reason'=>'9',
+            'cancel_justification'=>'Synthetic cancellation with legal approval',
+        ]);
+        $view=$this->approval->review($proposal['request_id']);
+        try {
+            $this->approval->decide(
+                $view['request_id'],$view['csrf'],$view['cookie'],
+                'approve','member@example.invalid','correct-password','EXCLUIR',
+            );
+            self::fail('Generic destructive confirmation must not cancel NFS-e');
+        } catch (RuntimeException) {
+            self::assertSame(0,$this->client->writes);
+        }
+        self::assertSame('completed',$this->approval->decide(
+            $view['request_id'],$view['csrf'],$view['cookie'],
+            'approve','member@example.invalid','correct-password','CANCELAR',
+        )['status']);
+        self::assertSame(1,$this->client->writes);
+    }
+
+    public function testProductionReissueAndSubstitutionRequireCurrentReceiptAndDps(): void
+    {
+        $this->client->sandbox=false;
+        $this->client->dpsEnvironment=1;
+        $this->client->receiptId=12;
+        $substitute=$this->prepare('api.nfse.invoices.substitute','POST',['invoice'=>7],[
+            'nfse_substitution_receipt_id'=>12,
+            'nfse_substitution_reason'=>'05',
+            'nfse_substitution_description'=>'Synthetic correction authorized by operator',
+            'nfse_force_ajax'=>true,
+        ]);
+        self::assertSame('completed',$this->approve($substitute)['status']);
+        $this->client->receiptState='cancelled';
+        $reissue=$this->prepare('api.nfse.invoices.reemit','POST',['invoice'=>7],[
+            'nfse_receipt_id'=>12,'nfse_force_ajax'=>true,
+        ]);
+        self::assertSame('completed',$this->approve($reissue)['status']);
+        self::assertSame(2,$this->client->writes);
     }
 
     public function testFiscalTransmissionRequiresExplicitDeploymentGate(): void
@@ -573,7 +725,7 @@ final class NfseWriteBehaviorTest extends TestCase
                 'nfse_force_ajax'=>true,
             ]);
         } finally {
-            self::assertSame(0,$this->api->writes);
+            self::assertSame(0,$this->client->writes);
         }
     }
 
@@ -581,7 +733,7 @@ final class NfseWriteBehaviorTest extends TestCase
     {
         $routes=array_column((new NfseReadCatalog())->list(),'route');
         self::assertContains('api.nfse.invoices.fiscal-assessment',$routes);
-        $response=(new NfseReadService($this->api))->read(
+        $response=(new NfseReadService($this->client))->read(
             $this->store->load($this->subject),1,[
                 'route'=>'api.nfse.invoices.fiscal-assessment',
                 'route_params'=>['invoice'=>7],
@@ -589,7 +741,7 @@ final class NfseWriteBehaviorTest extends TestCase
         )['response'];
         self::assertSame('rtc_calendar_preview',$response['scope']);
         self::assertFalse($response['final_dps_checked']);
-        self::assertSame($this->api->groupKey,$response['data'][0]['group_key']);
+        self::assertSame($this->client->groupKey,$response['data'][0]['group_key']);
     }
 
     public function testFiscalEventAttestationRequiresApprovalButNotTransmissionGate(): void
@@ -599,7 +751,7 @@ final class NfseWriteBehaviorTest extends TestCase
         self::assertTrue($routes['api.nfse.invoices.fiscal-event-evidence.store']['enabled']);
         self::assertFalse($routes['api.nfse.invoices.emit']['enabled']);
         $body=[
-            'fiscal_group_key'=>$this->api->groupKey,
+            'fiscal_group_key'=>$this->client->groupKey,
             'taxable_event_date'=>'2026-11-01',
             'source_reference'=>'Signed synthetic service acceptance document',
             'acknowledge'=>true,
@@ -608,18 +760,18 @@ final class NfseWriteBehaviorTest extends TestCase
             'api.nfse.invoices.fiscal-event-evidence.store','POST',['invoice'=>7],$body,
         );
         self::assertSame('awaiting_human_approval',$proposal['status']);
-        self::assertSame(0,$this->api->writes);
+        self::assertSame(0,$this->client->writes);
         self::assertSame('completed',$this->approve($proposal)['status']);
-        self::assertSame('/nfse/invoices/7/fiscal-event-evidence',$this->api->lastWrite['path']);
-        self::assertSame('POST',$this->api->lastWrite['method']);
-        self::assertSame($body,$this->api->lastWrite['body']);
-        self::assertArrayNotHasKey('company_id',$this->api->lastWrite['body']);
+        self::assertSame('/nfse/invoices/7/fiscal-event-evidence',$this->client->lastWrite['path']);
+        self::assertSame('POST',$this->client->lastWrite['method']);
+        self::assertSame($body,$this->client->lastWrite['body']);
+        self::assertArrayNotHasKey('company_id',$this->client->lastWrite['body']);
     }
 
     public function testFiscalEventAttestationRejectsUnprovenOrCrossCompanyData(): void
     {
         $body=[
-            'fiscal_group_key'=>$this->api->groupKey,
+            'fiscal_group_key'=>$this->client->groupKey,
             'taxable_event_date'=>'2026-11-01',
             'source_reference'=>'Signed synthetic service acceptance document',
             'acknowledge'=>true,
@@ -637,11 +789,11 @@ final class NfseWriteBehaviorTest extends TestCase
                     ['invoice'=>7],[...$body,...$override]);
                 self::fail('Unreviewed fiscal event attestation was accepted');
             } catch (RuntimeException) {
-                self::assertSame(0,$this->api->writes);
+                self::assertSame(0,$this->client->writes);
             }
         }
         $foreignCompany=2;
-        $this->api->invoiceCompany=$foreignCompany;
+        $this->client->invoiceCompany=$foreignCompany;
         $this->expectException(RuntimeException::class);
         $this->prepare('api.nfse.invoices.fiscal-event-evidence.store','POST',
             ['invoice'=>7],$body);
@@ -651,18 +803,18 @@ final class NfseWriteBehaviorTest extends TestCase
     {
         $proposal=$this->prepare(
             'api.nfse.invoices.fiscal-event-evidence.store','POST',['invoice'=>7],[
-                'fiscal_group_key'=>$this->api->groupKey,
+                'fiscal_group_key'=>$this->client->groupKey,
                 'taxable_event_date'=>'2026-11-01',
                 'source_reference'=>'Synthetic independently reviewed event date',
                 'acknowledge'=>true,
             ],
         );
-        $this->api->eventDate='2026-10-31';
+        $this->client->eventDate='2026-10-31';
         $this->expectException(RuntimeException::class);
         try {
             $this->approve($proposal);
         } finally {
-            self::assertSame(0,$this->api->writes);
+            self::assertSame(0,$this->client->writes);
             self::assertSame('outcome_unconfirmed',
                 $this->approval->status($this->subject,$proposal['request_id'])['status']);
         }
@@ -673,7 +825,7 @@ final class NfseWriteBehaviorTest extends TestCase
         (new NfseWriteCatalog())->validate(
             'api.nfse.invoices.emit',[
                 'nfse_force_ajax'=>true,
-                'nfse_fiscal_group_key'=>$this->api->groupKey,
+                'nfse_fiscal_group_key'=>$this->client->groupKey,
             ],1,['invoice'=>7],
         );
         $this->expectException(RuntimeException::class);
@@ -685,19 +837,20 @@ final class NfseWriteBehaviorTest extends TestCase
         );
     }
 
-    public function testMcpCannotEnableProductionOrAutomaticIssuance(): void
+    public function testMcpRejectsInvalidEnvironmentAndAutomaticPolicyValues(): void
     {
         $catalog=new NfseWriteCatalog();
         foreach ([
-            ['sandbox_mode'=>false],
-            ['emission_policy'=>'emit_on_send'],
+            ['sandbox_mode'=>'false'],
+            ['emission_policy'=>'automatic_without_review'],
+            ['pfx_password'=>'hidden'],
         ] as $fields) {
             try {
                 $catalog->validate('api.nfse.settings.company-profiles.update',
                     ['fiscal_parameters'=>$fields],1,['companyId'=>1]);
-                self::fail('Automatic or production fiscal activation was accepted');
+                self::fail('Unsupported fiscal configuration was accepted');
             } catch (RuntimeException) {
-                self::assertSame(0,$this->api->writes);
+                self::assertSame(0,$this->client->writes);
             }
         }
     }

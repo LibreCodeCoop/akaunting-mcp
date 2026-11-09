@@ -3,3 +3,14 @@
 # Historical synthetic test property assignment was a false positive for generic-api-key.
 # Exact fingerprint only; all other findings remain blocking.
 ab6a357554b38e93b13e0bef240a0e0332a7522a:tests/phpunit/NfseWriteBehaviorTest.php:generic-api-key:333
+# Historical synthetic client assignments in PR #16 and PR #22 (no credential values).
+# Only these commit/file/rule/line fingerprints are excluded.
+c52a975b240e2a73eeb0e845eb371b5a826e7815:tests/phpunit/NfseWriteBehaviorTest.php:generic-api-key:270
+c52a975b240e2a73eeb0e845eb371b5a826e7815:tests/phpunit/NfseWriteBehaviorTest.php:generic-api-key:301
+c52a975b240e2a73eeb0e845eb371b5a826e7815:tests/phpunit/NfseWriteBehaviorTest.php:generic-api-key:308
+28627f567f5eea790246dc97ef9c90073821718d:tests/phpunit/NfseWriteBehaviorTest.php:generic-api-key:243
+28627f567f5eea790246dc97ef9c90073821718d:tests/phpunit/NfseWriteBehaviorTest.php:generic-api-key:256
+28627f567f5eea790246dc97ef9c90073821718d:tests/phpunit/NfseWriteBehaviorTest.php:generic-api-key:277
+28627f567f5eea790246dc97ef9c90073821718d:tests/phpunit/NfseWriteBehaviorTest.php:generic-api-key:301
+28627f567f5eea790246dc97ef9c90073821718d:tests/phpunit/NfseWriteBehaviorTest.php:generic-api-key:306
+28627f567f5eea790246dc97ef9c90073821718d:tests/phpunit/NfseWriteBehaviorTest.php:generic-api-key:698
