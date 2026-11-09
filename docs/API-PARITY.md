@@ -62,3 +62,8 @@ passwords require an explicitly designed, authenticated transfer boundary.
 
 The MCP's generic read and prepared-mutation tools can remain stable as the
 catalog expands, avoiding a ChatGPT connector refresh for each new route.
+Native POST endpoints whose verified implementation has **no financial side
+effect** (e.g. bulk planning and Vault capability diagnosis) may be exposed
+as audited read-only operations through a separate exact-path transport.
+Their requested method, typed body and read-only semantics must be checked;
+route naming or HTTP verb alone is never sufficient.
