@@ -60,17 +60,20 @@ final class Toolset
                 'required'=>['company_id'],
             ]],
             ['name'=>'akaunting_api_routes',
-                'description'=>'Discover reviewed GET-only native and installed-module API routes with required permission hints. Route listing does not prove the current account is authorized.',
+                'description'=>'Discover reviewed native and module API reads (GET and exact read-only POST previews/diagnostics) with method and permission hints. Registration does not prove account permission.',
                 'inputSchema'=>['type'=>'object','properties'=>['company_id'=>$company],
                     'required'=>['company_id']]],
             ['name'=>'akaunting_api_read',
-                'description'=>'Read a reviewed native or module API route using typed parameters and module filters. Native ACL, company membership, tenant filtering and secret redaction apply. GET only; mutating GET routes are excluded.',
+                'description'=>'Read a reviewed native or module API route using typed parameters. GET routes and explicitly vetted non-mutating POST previews/diagnostics only; mutating GET routes excluded. Native ACL, tenancy and redaction apply.',
                 'inputSchema'=>['type'=>'object','properties'=>[
                     'company_id'=>$company,
                     'route'=>['type'=>'string','maxLength'=>120,'description'=>'Exact name returned by akaunting_api_routes; e.g. api.departments.index or api.documents.transactions.show.'],
                     'route_params'=>['type'=>'object','description'=>'Named route placeholders: numeric IDs; selected module routes also use typed entity_type/field_key strings.'],
                     'module_filters'=>['type'=>'object',
                         'description'=>'Typed query parameters for reviewed or live-discovered GET routes. Only keys and value types declared by the native API are accepted; no arbitrary query forwarding.',
+                        'additionalProperties'=>true],
+                    'post_body'=>['type'=>'object',
+                        'description'=>'Only for reviewed non-mutating NFS-e POST APIs. Bulk preview: invoice_ids (1-100 distinct positive IDs); Vault diagnostics accept an empty body. No fiscal writes or arbitrary endpoints.',
                         'additionalProperties'=>true],
                     'nfse_filters'=>['type'=>'object','description'=>'NFS-e GET filters. Existing routes use strict reviewed keys; automatically discovered routes validate keys and types against their live server contract.',
                         'properties'=>[
@@ -101,7 +104,7 @@ final class Toolset
         unset($tool);
         $writeRoutes = [
             ['name'=>'akaunting_mutation_routes',
-                'description'=>'List reviewed Akaunting API mutations. Each change requires user-confirmed native tool execution or the legacy browser approval; fiscal issuance and cancellation require a reconciled authority in the selected environment.',
+                'description'=>'List reviewed Akaunting API mutations. Each change requires user-confirmed native tool execution or the legacy browser approval; fiscal issuance and cancellation require a reconciled authority in the selected environment; bulk dispatch is sandbox-only.',
                 'inputSchema'=>['type'=>'object','properties'=>['company_id'=>$company], 'required'=>['company_id']]],
             ['name'=>'akaunting_prepare_mutation',
                 'description'=>'PREPARE ONLY: validate and freeze an Akaunting mutation. By default returns a request ID for a user-confirmed native ChatGPT write tool call; no browser login or password. Legacy approval_transport=browser remains available. No records are changed by prepare.',
@@ -160,7 +163,7 @@ final class Toolset
                 'route_discovery_tool'=>'akaunting_api_routes',
                 'read_tool'=>'akaunting_api_read',
                 'automatic_read_discovery'=>'authenticated_module_contracts_only',
-                'nfse_api'=>'reviewed_json_reads_and_browser_approved_configuration; fiscal_write_per_environment_with_approval; certificate_upload_not_supported',
+                'nfse_api'=>'reviewed_get_and_read_only_post; host_confirmed_operational_mutations; fiscal_emit_cancel_per_environment; fiscal_bulk_dispatch_sandbox_only; certificate_upload_not_supported',
                 'user_audit'=>'company_scoped_roles_without_effective_permission_details'];
         }
         $company = ($name === 'akaunting_list_companies') ? $creds['company_id'] : ($args['company_id'] ?? null);
