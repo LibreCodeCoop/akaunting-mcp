@@ -40,7 +40,7 @@ encrypted credentials. There is no shared cross-user response cache.
 - `src/RouteCatalog.php` and `src/api-routes.json`: reviewed named GET route allowlist.
 - `src/ApiBrowser.php` and `src/Toolset.php`: authorization-aware reads and approval proposals.
 - `src/NfseReadCatalog.php`, `src/NfseReadService.php` and `src/NfseWriteCatalog.php`:
-  reviewed fiscal API contracts, safe response validation and sandbox-only fiscal write preflight.
+  reviewed fiscal API contracts, safe response validation and environment-bound fiscal write preflight.
 - `src/ApprovalService.php` and `src/WriteRouteCatalog.php`: frozen, single-use native host-confirmed or legacy browser approvals.
 - `src/UserScopeFilter.php` and `src/SettingsScopeFilter.php`: special fail-closed
   projections for unsafe upstream listing endpoints.

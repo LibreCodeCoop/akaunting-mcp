@@ -40,7 +40,7 @@ Edit the **local** .env.deploy file. Do not commit it or paste its contents into
 | MCP_RESOURCE_URI | Canonical tunnel resource URL; must match the tunnel ID |
 | MCP_PROXY_NETWORK | Name of the **existing** Docker proxy network when using the oauth-edge profile |
 
-Also review MCP_ALLOWED_HOSTS, MCP_OAUTH_EDGE_ALIAS, APP_UID and APP_GID for the deployment. Keep `MCP_NFSE_FISCAL_WRITES_ENABLED=false` until the module's legal preflight and DPS authority have been verified; see [restricted fiscal operations](NFSE-WRITES.md). Do not copy the example placeholders unchanged into a live configuration. The production resource must use the OpenAI tunnel resource shape validated in [src/Config.php](../src/Config.php). Do not guess a tunnel ID or OAuth callback.
+Also review MCP_ALLOWED_HOSTS, MCP_OAUTH_EDGE_ALIAS, APP_UID and APP_GID for the deployment. Keep `MCP_NFSE_FISCAL_WRITES_ENABLED=false` until the module's legal preflight and DPS authority have been verified; see [fiscal operations](NFSE-WRITES.md). Do not copy the example placeholders unchanged into a live configuration. The production resource must use the OpenAI tunnel resource shape validated in [src/Config.php](../src/Config.php). Do not guess a tunnel ID or OAuth callback.
 
 ## 2. Provision private secret files
 
