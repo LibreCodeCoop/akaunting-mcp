@@ -94,7 +94,14 @@ final class Toolset
                     'record_type'=>['type'=>'string','description'=>'Required for contacts, documents and nested document transactions.'],
                     'fields'=>$fieldSelection,
                 ], 'required'=>['company_id','route']]],
-
+            ['name'=>'akaunting_nfse_secure_handoff',
+                'description'=>'Return an authenticated native Akaunting browser page for PFX/certificate/Vault entry and protected CSV/XML/PDF retrieval. No credentials, financial bytes or authorization tokens enter MCP. The user must log in and interact with native permissions; this tool does not execute a mutation or download.',
+                'inputSchema'=>['type'=>'object','properties'=>[
+                    'company_id'=>$company,
+                    'route'=>['type'=>'string','enum'=>NfseSecureHandoff::operations()],
+                    'route_params'=>['type'=>'object',
+                        'description'=>'Only the reviewed keys: competence (YYYY-MM) for closing, or invoice/receipt IDs and xml/danfse artifact for an authorized receipt. Must be empty for sensitive configuration handoff.'],
+                ],'required'=>['company_id','route']]],
         ];
         foreach ($tools as &$tool) {
             $tool['annotations'] = $readAnnotations;
@@ -211,6 +218,15 @@ final class Toolset
         }
         if ($name === 'akaunting_api_read') {
             return (new ApiBrowser($this->api))->read($creds,$company,$args);
+        }
+        if ($name === 'akaunting_nfse_secure_handoff') {
+            if (!is_string($args['route']??null)
+                || !is_array($args['route_params']??[])) {
+                throw new RuntimeException('Invalid secure browser operation');
+            }
+            return (new NfseSecureHandoff($this->api))->link(
+                $creds,$company,$args['route'],$args['route_params']??[],
+            );
         }
         if ($name === 'akaunting_list_companies') {
             $page = $args['page'] ?? 1;

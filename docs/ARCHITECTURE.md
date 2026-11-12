@@ -122,6 +122,22 @@ Direct invoice **email sending** remains blocked from the MCP mutation
 catalog: it can trigger `DocumentSending` and thus the fiscal emission
 lifecycle, and needs a distinct, reviewed confirmation/side-effect contract.
 
+## Native secure browser handoffs
+
+Sensitive or binary functions remain available through the **native authenticated
+Akaunting UI**, not a JSON tunnel through the language model. The read-only
+`akaunting_nfse_secure_handoff` tool verifies personal company membership
+and the relevant native read resource before producing a fixed allowlisted URL:
+PFX inspection and profile creation, Vault credential entry, closing CSV,
+IBS/CBS evidence CSV, and the current receipt's authorized XML/DANFSe.
+The selected native page still enforces its own session, CSRF and ACL.
+A handoff **does not perform or approve an API mutation**, transfer private
+bytes, or confer access solely because a link was generated.
+
+These six operations remain **distinct from direct MCP route parity** in the
+route audit until proper authenticated file/secret transports are implemented.
+Do not count browser navigation as a successful JSON endpoint execution.
+
 Deploying a new NFS-e module version is a prerequisite for consuming these
 new endpoints; a reviewed catalog entry never establishes that a route is
 installed or that the connected identity is authorized. No generic
