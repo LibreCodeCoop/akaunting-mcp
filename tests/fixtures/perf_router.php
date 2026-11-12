@@ -61,6 +61,7 @@ if (in_array($path, [
             'configured'=>true,'host'=>'dav.example.invalid',
             'username_configured'=>true,'password_configured'=>true,
             'path_template'=>'nfse/{cnpj}/{year}',
+            'path_scope'=>'company',
             'filename_template'=>'{chave_acesso}',
             'store_xml'=>true,'store_pdf'=>false,
         ]],JSON_THROW_ON_ERROR);
