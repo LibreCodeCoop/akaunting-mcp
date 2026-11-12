@@ -571,7 +571,10 @@ final class NfseWriteCatalog
                 throw new RuntimeException('Invoice does not belong to selected company');
             }
             ReadResponseGuard::assertNestedCompany($invoice,$company);
-            $decision=$reader->read($creds,$company,[
+            // Fiscal decision history is a live, explicitly annotated
+            // read contract. Keep response-field projection, tenancy checks
+            // and discovery validation; never bypass it via a static GET.
+            $decision=(new ApiBrowser($api))->read($creds,$company,[
                 'route'=>'api.nfse.invoices.fiscal-decision.show',
                 'route_params'=>['invoice'=>$invoiceId],
             ])['response']['data']??null;

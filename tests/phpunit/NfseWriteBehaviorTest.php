@@ -61,6 +61,7 @@ final class NfseWriteBehaviorTest extends TestCase
             public bool $categoryCanIssue=true;
             public string $categoryMode='issue';
             public int $fiscalDecisionVersion=0;
+            public bool $decisionDiscoveryAvailable=true;
             public string $adnReviewStatus='pending';
             public int $adnDocumentId=11;
             public int $adnCompany=1;
@@ -77,6 +78,24 @@ final class NfseWriteBehaviorTest extends TestCase
 
             public function get(string $email,string $password,string $path,array $query=[]): array
             {
+                if ($path==='/nfse/discovery') {
+                    if (!$this->decisionDiscoveryAvailable) {
+                        throw new RuntimeException('Akaunting request rejected (HTTP 404)');
+                    }
+                    return [
+                        'version'=>1,'company_id'=>1,
+                        'routes'=>[[
+                            'name'=>'api.nfse.invoices.fiscal-decision.show',
+                            'uri'=>'{company_id}/api/nfse/invoices/{invoice}/fiscal-decision',
+                            'method'=>'GET','scope'=>'invoice','params'=>['invoice'],
+                            'query'=>[],
+                            'response_paths'=>[
+                                '/data/current','/data/effective','/data/history',
+                            ],
+                            'permissions'=>['read-sales-invoices'],
+                        ]],
+                    ];
+                }
                 if ($path==='/nfse/settings/company-profiles') {
                     return ['profiles'=>[[
                         'company_id'=>1,'status'=>$this->profileActive?'active':'inactive',
@@ -202,6 +221,17 @@ final class NfseWriteBehaviorTest extends TestCase
                     ]];
                 }
                 throw new RuntimeException('Unreviewed synthetic read: '.$path);
+            }
+
+            public function getDiscovered(
+                string $email,string $password,array $approved,array $query
+            ): array {
+                if (($approved['path']??null)!=='/nfse/invoices/7/fiscal-decision'
+                    || ($approved['company_id']??null)!==1
+                    || ($query['company_id']??null)!==1) {
+                    throw new RuntimeException('Unsafe synthetic discovered read');
+                }
+                return $this->get($email,$password,$approved['path'],$query);
             }
 
             public function mutate(
@@ -399,6 +429,22 @@ final class NfseWriteBehaviorTest extends TestCase
             self::fail('Changed fiscal decision was accepted after approval preparation');
         } catch (RuntimeException) {
             self::assertSame(1,$this->client->writes);
+        }
+    }
+
+    public function testFiscalDecisionRefusesMissingNativeReadDiscoveryRatherThanBypassingAcl(): void
+    {
+        $this->client->decisionDiscoveryAvailable=false;
+        try {
+            $this->prepare('api.nfse.invoices.fiscal-decision.store','POST',
+                ['invoice'=>7],[
+                    'decision'=>'do_not_issue',
+                    'reason'=>'operational_review',
+                    'justification'=>'Synthetic accounting note for fiscal decision',
+                ]);
+            self::fail('Undiscovered fiscal decision was prepared for execution');
+        } catch (RuntimeException) {
+            self::assertSame(0,$this->client->writes);
         }
     }
 

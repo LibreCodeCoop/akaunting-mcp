@@ -82,10 +82,6 @@ final class NfseReadCatalog
             'path'=>'/nfse/settings/category-issuance',
             'permission'=>'read-nfse-settings', 'filters'=>[],
         ],
-        'api.nfse.invoices.fiscal-decision.show' => [
-            'path'=>'/nfse/invoices/{invoice}/fiscal-decision',
-            'permission'=>'read-sales-invoices', 'filters'=>[],
-        ],
         'api.nfse.settings.approximate-taxes.index' => [
             'path'=>'/nfse/settings/approximate-taxes', 'permission'=>'read-nfse-settings',
             'filters'=>['page','limit'],
