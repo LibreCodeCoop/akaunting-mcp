@@ -29,7 +29,7 @@ jobs:
           repository: LibreCodeCoop/akaunting-nfse
           # Audit the exact signed companion PR #600 revision. Replace this
           # temporary SHA with main only after module integration.
-          ref: 7cd19d24cc9c6958c398a848570e2aed68346438
+          ref: a166b2168ea8c037132601bf1e41adf8fd709fa4
           path: nfse-module
           persist-credentials: false
       - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # v2.40.0

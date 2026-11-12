@@ -115,7 +115,7 @@ final class McpTransportBehaviorTest extends TestCase
         ]);
         self::assertSame($expected,$initialized['result']['protocolVersion']);
         $listed=$this->execute(['jsonrpc'=>'2.0','id'=>8,'method'=>'tools/list']);
-        self::assertCount(13,$listed['result']['tools']);
+        self::assertCount(14,$listed['result']['tools']);
         foreach($listed['result']['tools'] as $tool) {
             self::assertSame(
                 !in_array($tool['name'],['akaunting_prepare_mutation',
