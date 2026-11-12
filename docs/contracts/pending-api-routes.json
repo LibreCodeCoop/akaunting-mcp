@@ -88,14 +88,6 @@
     "reason": "Signed fiscal artifacts require protected authenticated binary download handling."
   },
   {
-    "route": "api.nfse.settings.company-profiles.cleanup",
-    "reason": "Fiscal profile cleanup is destructive and requires state-aware approval."
-  },
-  {
-    "route": "api.nfse.settings.company-profiles.destroy",
-    "reason": "Fiscal profile deletion is destructive and requires state-aware approval."
-  },
-  {
     "route": "api.nfse.settings.company-profiles.store",
     "reason": "Company profile creation needs tenant and tax identity validation."
   },

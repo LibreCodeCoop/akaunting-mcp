@@ -30,6 +30,14 @@ final class NfseWriteCatalog
             'method'=>'PATCH', 'path'=>'/nfse/settings/company-profiles/{companyId}',
             'permission'=>'update-nfse-settings',
         ],
+        'api.nfse.settings.company-profiles.cleanup' => [
+            'method'=>'POST','path'=>'/nfse/settings/company-profiles/{companyId}/cleanup',
+            'permission'=>'delete-nfse-settings',
+        ],
+        'api.nfse.settings.company-profiles.destroy' => [
+            'method'=>'DELETE','path'=>'/nfse/settings/company-profiles/{companyId}',
+            'permission'=>'delete-nfse-settings',
+        ],
         'api.nfse.settings.tax-associations.store' => [
             'method'=>'POST', 'path'=>'/nfse/settings/tax-associations',
             'permission'=>'update-nfse-settings',
@@ -193,6 +201,25 @@ final class NfseWriteCatalog
         if (!isset(self::ROUTES[$name]) || $body===[] || array_is_list($body)
             || array_key_exists('company_id',$body)) {
             throw new RuntimeException('Invalid NFS-e mutation body');
+        }
+        if (in_array($name,[
+            'api.nfse.settings.company-profiles.cleanup',
+            'api.nfse.settings.company-profiles.destroy',
+        ],true)) {
+            if (($params['companyId']??null)!==$company) {
+                throw new RuntimeException('Fiscal profile deletion company mismatch');
+            }
+            $this->only($body,['confirmed','expected_status','expected_cleanup_pending']);
+            $status=$body['expected_status']??null;
+            if (($body['confirmed']??null)!==true
+                || !in_array($status,['active','provisioning','deleting'],true)
+                || !is_bool($body['expected_cleanup_pending']??null)
+                || ($name==='api.nfse.settings.company-profiles.cleanup'
+                    && $status==='active'
+                    && $body['expected_cleanup_pending']===false)) {
+                throw new RuntimeException('Fiscal profile destructive operation needs exact evidence and confirmation');
+            }
+            return;
         }
         if ($name==='api.nfse.settings.artifacts.update') {
             $this->only($body,['nfse']);
@@ -539,6 +566,8 @@ final class NfseWriteCatalog
         $noIssuancePrerequisite=in_array($route,[
             'api.nfse.settings.email-footer.update',
             'api.nfse.settings.artifacts.update',
+            'api.nfse.settings.company-profiles.cleanup',
+            'api.nfse.settings.company-profiles.destroy',
             'api.nfse.invoices.email-preferences.store',
             'api.nfse.settings.category-issuance.store',
             'api.nfse.invoices.fiscal-decision.store',
@@ -562,7 +591,29 @@ final class NfseWriteCatalog
             }
             $snapshot['profile']=$profile;
         }
-        if ($route==='api.nfse.settings.artifacts.update') {
+        if (in_array($route,[
+            'api.nfse.settings.company-profiles.cleanup',
+            'api.nfse.settings.company-profiles.destroy',
+        ],true)) {
+            $profiles=$reader->read($creds,$company,[
+                'route'=>'api.nfse.settings.company-profiles.index',
+            ])['response']['profiles']??null;
+            if (!is_array($profiles) || !array_is_list($profiles)) {
+                throw new RuntimeException('Fiscal profile status unavailable');
+            }
+            $matches=array_values(array_filter($profiles,static fn (mixed $row): bool =>
+                is_array($row) && ($row['company_id']??null)===$company
+            ));
+            if (count($matches)!==1) {
+                throw new RuntimeException('Company fiscal profile not present');
+            }
+            $current=$matches[0];
+            if (($current['status']??null)!==$body['expected_status']
+                || ($current['cleanup_pending']??null)!==$body['expected_cleanup_pending']) {
+                throw new RuntimeException('Fiscal profile state changed before destructive approval');
+            }
+            $snapshot['company_fiscal_profile']=$current;
+        } elseif ($route==='api.nfse.settings.artifacts.update') {
             $current=$reader->read($creds,$company,[
                 'route'=>'api.nfse.settings.artifacts.show',
             ])['response']['data']??null;

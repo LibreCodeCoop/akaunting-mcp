@@ -211,7 +211,8 @@ final class ApprovalService
         }
         $plan=$this->store->openPlan($entry['sealed']);
         if ($plan['method']==='DELETE') {
-            $phrase=str_starts_with($plan['route'],'api.nfse.')?'CANCELAR':'EXCLUIR';
+            $phrase=$plan['route']==='api.nfse.invoices.cancel'
+                ? 'CANCELAR' : 'EXCLUIR';
             if ($confirmation!==$phrase) {
                 throw new RuntimeException('Destructive operation requires explicit confirmation phrase');
             }
@@ -298,7 +299,8 @@ final class ApprovalService
             throw new RuntimeException('Native confirmation does not match prepared operation');
         }
         if ($plan['method']==='DELETE') {
-            $phrase=str_starts_with($plan['route'],'api.nfse.')?'CANCELAR':'EXCLUIR';
+            $phrase=$plan['route']==='api.nfse.invoices.cancel'
+                ? 'CANCELAR' : 'EXCLUIR';
             if ($confirmation!==$phrase) {
                 throw new RuntimeException('Destructive action requires explicit confirmation phrase');
             }

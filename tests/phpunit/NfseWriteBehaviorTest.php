@@ -55,6 +55,7 @@ final class NfseWriteBehaviorTest extends TestCase
             public int $invoiceCompany=1;
             public int $profileVersion=1;
             public bool $profileActive=true;
+            public bool $profileCleanupPending=true;
             public string $groupKey='service:0107|tax:010701|mun:123|rate:5.00';
             public ?string $eventDate=null;
             public int $categoryVersion=1;
@@ -106,6 +107,7 @@ final class NfseWriteBehaviorTest extends TestCase
                             'dps_series'=>'00001',
                         ],
                         'version'=>$this->profileVersion,
+                        'cleanup_pending'=>$this->profileCleanupPending,
                     ]], 'eligible_companies'=>[]];
                 }
                 if ($path==='/nfse/settings/email-footer') {
@@ -337,6 +339,68 @@ final class NfseWriteBehaviorTest extends TestCase
             } catch (RuntimeException) {
                 self::assertSame(3,$this->client->writes);
             }
+        }
+    }
+
+    public function testDestructiveFiscalProfileOperationsRequireExactStateAndApproval(): void
+    {
+        $body=[
+            'confirmed'=>true,
+            'expected_status'=>'active',
+            'expected_cleanup_pending'=>true,
+        ];
+        $cleanup='api.nfse.settings.company-profiles.cleanup';
+        $destroy='api.nfse.settings.company-profiles.destroy';
+        $prepared=$this->prepare($cleanup,'POST',['companyId'=>1],$body);
+        self::assertSame(0,$this->client->writes);
+        self::assertSame('completed',$this->approve($prepared)['status']);
+        self::assertSame('/nfse/settings/company-profiles/1/cleanup',$this->client->lastWrite['path']);
+
+        $prepared=$this->prepare($destroy,'DELETE',['companyId'=>1],$body);
+        try {
+            $this->approve($prepared,'CANCELAR');
+            self::fail('Fiscal profile deletion used cancellation phrase instead of EXCLUIR');
+        } catch (RuntimeException) {
+            self::assertSame(1,$this->client->writes);
+        }
+        // The wrong confirmation did not consume the browser proposal.
+        self::assertSame('completed',$this->approve($prepared,'EXCLUIR')['status']);
+        self::assertSame('DELETE',$this->client->lastWrite['method']);
+        self::assertSame('/nfse/settings/company-profiles/1',$this->client->lastWrite['path']);
+
+        foreach ([
+            [2,$body],
+            [1,[...$body,'confirmed'=>false]],
+            [1,[...$body,'expected_status'=>'unknown']],
+            [1,[...$body,'force'=>true]],
+            [1,[...$body,'expected_cleanup_pending'=>0]],
+        ] as [$target,$bad]) {
+            try {
+                $this->prepare($destroy,'DELETE',['companyId'=>$target],$bad);
+                self::fail('Unsafe fiscal profile deletion prepared');
+            } catch (RuntimeException) {
+                self::assertSame(2,$this->client->writes);
+            }
+        }
+
+        $prepared=$this->prepare($destroy,'DELETE',['companyId'=>1],$body);
+        $this->client->profileVersion=2;
+        try {
+            $this->approve($prepared,'EXCLUIR');
+            self::fail('Stale fiscal profile deletion executed');
+        } catch (RuntimeException) {
+            self::assertSame(2,$this->client->writes);
+        }
+
+        $this->client->profileCleanupPending=false;
+        try {
+            $this->prepare($cleanup,'POST',['companyId'=>1],[
+                'confirmed'=>true,'expected_status'=>'active',
+                'expected_cleanup_pending'=>false,
+            ]);
+            self::fail('Unnecessary cleanup accepted for active clean profile');
+        } catch (RuntimeException) {
+            self::assertSame(2,$this->client->writes);
         }
     }
 
