@@ -144,13 +144,16 @@ Akaunting UI**, not a JSON tunnel through the language model. The read-only
 `akaunting_nfse_secure_handoff` tool verifies personal company membership
 and the relevant native read resource before producing a fixed allowlisted URL:
 PFX inspection and profile creation, Vault credential entry, closing CSV,
-IBS/CBS evidence CSV, and the current receipt's authorized XML/DANFSe.
+IBS/CBS evidence CSV, the current receipt's authorized XML/DANFSe, and
+**email composition** for a company-owned invoice. The send action stays
+in the native interface: `DocumentSending` may initiate NFS-e issuance,
+so MCP cannot execute it as an unbounded JSON mutation.
 The selected native page still enforces its own session, CSRF and ACL.
 A handoff **does not perform or approve an API mutation**, transfer private
 bytes, or confer access solely because a link was generated.
 
-These six operations remain **distinct from direct MCP route parity** in the
-route audit until proper authenticated file/secret transports are implemented.
+These seven browser handoffs remain **distinct from direct MCP route parity**
+in the audit until their security-specific transports and approvals are implemented.
 Do not count browser navigation as a successful JSON endpoint execution.
 
 Deploying a new NFS-e module version is a prerequisite for consuming these

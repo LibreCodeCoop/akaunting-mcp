@@ -95,7 +95,7 @@ final class Toolset
                     'fields'=>$fieldSelection,
                 ], 'required'=>['company_id','route']]],
             ['name'=>'akaunting_nfse_secure_handoff',
-                'description'=>'Return an authenticated native Akaunting browser page for PFX/certificate/Vault entry and protected CSV/XML/PDF retrieval. No credentials, financial bytes or authorization tokens enter MCP. The user must log in and interact with native permissions; this tool does not execute a mutation or download.',
+                'description'=>'Return an authenticated native Akaunting browser page for PFX/certificate/Vault entry, protected CSV/XML/PDF retrieval or invoice email composition that could trigger issuance. No credentials, fiscal bytes or authorization tokens enter MCP. The user must log in and act through native permissions; this tool does not execute a mutation or download.',
                 'inputSchema'=>['type'=>'object','properties'=>[
                     'company_id'=>$company,
                     'route'=>['type'=>'string','enum'=>NfseSecureHandoff::operations()],

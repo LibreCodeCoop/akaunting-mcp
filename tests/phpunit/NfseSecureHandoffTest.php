@@ -105,6 +105,36 @@ final class NfseSecureHandoffTest extends TestCase
         }
     }
 
+    public function testEmailWithPotentialFiscalIssuanceIsOnlyANativeHumanHandoff(): void
+    {
+        $route='api.nfse.invoices.emails.store';
+        $api=$this->api();
+        $result=(new NfseSecureHandoff($api))->link(
+            $this->creds(),1,$route,['invoice'=>7],
+        );
+        self::assertSame(
+            'https://accounting.example.invalid/1/nfse/invoices/7',
+            $result['url'],
+        );
+        self::assertSame('native_authenticated_browser',$result['delivery']);
+        self::assertTrue($result['requires_separate_browser_authentication']);
+        self::assertFalse($result['transfers_credentials_or_file_contents_to_mcp']);
+        self::assertSame(['/documents/7'],array_column($api->calls,'path'));
+
+        foreach ([
+            ['invoice'=>0],['invoice'=>'7'],
+            ['invoice'=>7,'to'=>'external@example.invalid'],
+            ['invoice'=>7,'confirmed'=>true],
+        ] as $params) {
+            $this->mustReject(fn()=> (new NfseSecureHandoff($this->api()))->link(
+                $this->creds(),1,$route,$params,
+            ));
+        }
+        $this->mustReject(fn()=> (new NfseSecureHandoff($this->api()))->link(
+            $this->creds(),2,$route,['invoice'=>7],
+        ));
+    }
+
     public function testArtifactHandoffRequiresCurrentCompanyOwnedReadyReceipt(): void
     {
         $route='api.nfse.receipts.artifacts.download';

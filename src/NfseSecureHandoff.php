@@ -41,6 +41,10 @@ final class NfseSecureHandoff
             'path'=>'ledger',
             'description'=>'Download the authorized NFS-e XML/DANFSe in Akaunting',
         ],
+        'api.nfse.invoices.emails.store' => [
+            'path'=>'invoices',
+            'description'=>'Open the native invoice email composer. Sending may trigger fiscal issuance and requires explicit human action.',
+        ],
     ];
 
     public function __construct(private readonly Api $api) {}
@@ -87,6 +91,24 @@ final class NfseSecureHandoff
                 throw new RuntimeException('Unable to authorize fiscal closing');
             }
             $path.='?competence='.rawurlencode($competence);
+        } elseif ($operation==='api.nfse.invoices.emails.store') {
+            $keys=['invoice'];
+            $invoiceId=$params['invoice']??null;
+            if (!is_int($invoiceId) || $invoiceId<1 || $invoiceId>2147483647) {
+                throw new RuntimeException('Email handoff requires an existing company invoice');
+            }
+            $invoice=$this->api->get(
+                $credentials['email'],$credentials['password'],
+                '/documents/'.$invoiceId,[...$query,'search'=>'type:invoice'],
+            )['data']??null;
+            if (!is_array($invoice) || array_is_list($invoice)
+                || ($invoice['id']??null)!==$invoiceId
+                || ($invoice['company_id']??null)!==$companyId
+                || ($invoice['type']??null)!=='invoice') {
+                throw new RuntimeException('Email target invoice does not belong to selected company');
+            }
+            ReadResponseGuard::assertNestedCompany($invoice,$companyId);
+            $path='invoices/'.$invoiceId;
         } else {
             $keys=['invoice','receipt','artifact'];
             $invoiceId=$params['invoice']??null;
