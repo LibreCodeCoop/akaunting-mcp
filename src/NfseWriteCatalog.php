@@ -30,6 +30,14 @@ final class NfseWriteCatalog
             'method'=>'PATCH', 'path'=>'/nfse/settings/company-profiles/{companyId}',
             'permission'=>'update-nfse-settings',
         ],
+        'api.nfse.settings.company-profiles.cleanup' => [
+            'method'=>'POST','path'=>'/nfse/settings/company-profiles/{companyId}/cleanup',
+            'permission'=>'delete-nfse-settings',
+        ],
+        'api.nfse.settings.company-profiles.destroy' => [
+            'method'=>'DELETE','path'=>'/nfse/settings/company-profiles/{companyId}',
+            'permission'=>'delete-nfse-settings',
+        ],
         'api.nfse.settings.tax-associations.store' => [
             'method'=>'POST', 'path'=>'/nfse/settings/tax-associations',
             'permission'=>'update-nfse-settings',
@@ -41,6 +49,49 @@ final class NfseWriteCatalog
         'api.nfse.settings.approximate-taxes.store' => [
             'method'=>'POST', 'path'=>'/nfse/settings/approximate-taxes',
             'permission'=>'update-nfse-settings',
+        ],
+        // Reviewed auxiliary updates introduced by NFS-e #497.
+        'api.nfse.settings.email-footer.update' => [
+            'method'=>'PATCH', 'path'=>'/nfse/settings/email-footer',
+            'permission'=>'update-nfse-settings',
+        ],
+        // Only non-secret artifact policies; credential entry stays in the
+        // protected native browser flow. Never expose Vault/PFX via MCP.
+        'api.nfse.settings.artifacts.update' => [
+            'method'=>'PATCH', 'path'=>'/nfse/settings/artifacts',
+            'permission'=>'update-nfse-settings',
+        ],
+        'api.nfse.invoices.email-preferences.store' => [
+            'method'=>'POST', 'path'=>'/nfse/invoices/{invoice}/email-preferences',
+            'permission'=>'update-sales-invoices',
+        ],
+        'api.nfse.invoices.refresh-all' => [
+            'method'=>'POST', 'path'=>'/nfse/invoices/refresh-all',
+            'permission'=>'update-sales-invoices',
+        ],
+        'api.nfse.invoices.fiscal-decision.store' => [
+            'method'=>'POST','path'=>'/nfse/invoices/{invoice}/fiscal-decision',
+            'permission'=>'update-sales-invoices',
+        ],
+        'api.nfse.settings.category-issuance.store' => [
+            'method'=>'POST','path'=>'/nfse/settings/category-issuance',
+            'permission'=>'update-nfse-settings',
+        ],
+        'api.nfse.adn.documents.ignore' => [
+            'method'=>'POST','path'=>'/nfse/adn/documents/{document}/ignore',
+            'permission'=>'update-purchases-bills',
+        ],
+        'api.nfse.adn.documents.import' => [
+            'method'=>'POST','path'=>'/nfse/adn/documents/{document}/import',
+            'permission'=>'create-purchases-bills',
+        ],
+        'api.nfse.adn.distribution.consult' => [
+            'method'=>'POST','path'=>'/nfse/adn/distribution/consult',
+            'permission'=>'read-nfse-settings',
+        ],
+        'api.nfse.municipal-parameters.consult' => [
+            'method'=>'POST','path'=>'/nfse/municipal-parameters/consult',
+            'permission'=>'read-nfse-settings',
         ],
         'api.nfse.invoices.fiscal-event-evidence.store' => [
             'method'=>'POST', 'path'=>'/nfse/invoices/{invoice}/fiscal-event-evidence',
@@ -103,7 +154,8 @@ final class NfseWriteCatalog
                     ? 'production_restricted_only'
                     : ($fiscalCommand
                         ? 'production_and_restricted'
-                        : (in_array($name,['api.nfse.dps.advance','api.nfse.invoices.refresh'],true)
+                        : (in_array($name,['api.nfse.dps.advance','api.nfse.invoices.refresh',
+                            'api.nfse.invoices.refresh-all'],true)
                             ? 'company_scoped_operational_reconciliation'
                             : 'company_scoped_configuration')),
             ];
@@ -157,6 +209,190 @@ final class NfseWriteCatalog
         if (!isset(self::ROUTES[$name]) || $body===[] || array_is_list($body)
             || array_key_exists('company_id',$body)) {
             throw new RuntimeException('Invalid NFS-e mutation body');
+        }
+        if (in_array($name,[
+            'api.nfse.settings.company-profiles.cleanup',
+            'api.nfse.settings.company-profiles.destroy',
+        ],true)) {
+            if (($params['companyId']??null)!==$company) {
+                throw new RuntimeException('Fiscal profile deletion company mismatch');
+            }
+            $this->only($body,['confirmed','expected_status','expected_cleanup_pending']);
+            $status=$body['expected_status']??null;
+            if (($body['confirmed']??null)!==true
+                || !in_array($status,['active','provisioning','deleting'],true)
+                || !is_bool($body['expected_cleanup_pending']??null)
+                || ($name==='api.nfse.settings.company-profiles.cleanup'
+                    && $status==='active'
+                    && $body['expected_cleanup_pending']===false)) {
+                throw new RuntimeException('Fiscal profile destructive operation needs exact evidence and confirmation');
+            }
+            return;
+        }
+        if ($name==='api.nfse.settings.artifacts.update') {
+            $this->only($body,['nfse']);
+            $values=$body['nfse']??null;
+            if (!is_array($values) || $values===[] || array_is_list($values)) {
+                throw new RuntimeException('Non-secret WebDAV policy values required');
+            }
+            $this->only($values,[
+                'webdav_path_template','webdav_filename_template','webdav_path_scope',
+                'webdav_store_xml','webdav_store_pdf',
+            ]);
+            foreach (['webdav_store_xml','webdav_store_pdf'] as $flag) {
+                if (array_key_exists($flag,$values) && !is_bool($values[$flag])) {
+                    throw new RuntimeException('WebDAV archive flag must be boolean');
+                }
+            }
+            if (array_key_exists('webdav_path_scope',$values)
+                && !in_array($values['webdav_path_scope'],['company','configured'],true)) {
+                throw new RuntimeException('Invalid WebDAV path isolation scope');
+            }
+            foreach (['webdav_path_template','webdav_filename_template'] as $templateField) {
+                if (!array_key_exists($templateField,$values)) continue;
+                $value=$values[$templateField];
+                if (!is_string($value) || strlen($value)<1 || strlen($value)>255
+                    || trim($value,'/ .')===''
+                    || preg_match('/^[a-zA-Z0-9_{}.\\/\\- ]+$/D',$value)!==1
+                    || str_contains($value,'..') || str_contains($value,'//')
+                    || ($templateField==='webdav_filename_template' && str_contains($value,'/'))) {
+                    throw new RuntimeException('Invalid WebDAV archive naming template');
+                }
+                $withoutTokens=preg_replace(
+                    '/\\{(?:cnpj|year|month|day|month_name|nfse_number|chave_acesso|customer_name)\\}/',
+                    '',$value,
+                );
+                if (!is_string($withoutTokens)
+                    || str_contains($withoutTokens,'{') || str_contains($withoutTokens,'}')) {
+                    throw new RuntimeException('Unrecognized WebDAV archive placeholder');
+                }
+            }
+            if (($values['webdav_path_scope']??null)==='configured'
+                && (!is_string($values['webdav_path_template']??null)
+                    || !str_contains($values['webdav_path_template'],'{cnpj}'))) {
+                throw new RuntimeException('Dedicated WebDAV scope requires an explicit issuer CNPJ path');
+            }
+            return;
+        }
+        if ($name==='api.nfse.settings.email-footer.update') {
+            $this->only($body,['footer_message','footer_url']);
+            $message=$body['footer_message']??null;
+            $url=$body['footer_url']??null;
+            if (!is_string($message) || mb_strlen(trim($message))<1 || mb_strlen($message)>400
+                || preg_match('/[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F\\x7F]/',$message)===1
+                || !is_string($url) || strlen($url)>512
+                || filter_var($url,FILTER_VALIDATE_URL)===false
+                || parse_url($url,PHP_URL_SCHEME)!=='https'
+                || parse_url($url,PHP_URL_USER)!==null
+                || parse_url($url,PHP_URL_PASS)!==null
+                || preg_match('/[\\x00-\\x20\\x7F]/',$url)===1) {
+                throw new RuntimeException('Invalid fiscal email footer update');
+            }
+            return;
+        }
+        if ($name==='api.nfse.invoices.email-preferences.store') {
+            $this->only($body,['subject','body']);
+            $subject=$body['subject']??null;
+            $content=$body['body']??null;
+            if (!is_string($subject) || mb_strlen(trim($subject))===0 || mb_strlen($subject)>255
+                || !is_string($content) || mb_strlen(trim($content))===0 || mb_strlen($content)>12000
+                || preg_match('/[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F\\x7F]/',$subject.$content)===1) {
+                throw new RuntimeException('Invalid company email template');
+            }
+            return;
+        }
+        if ($name==='api.nfse.invoices.refresh-all') {
+            $this->only($body,['confirmed']);
+            if (($body['confirmed']??null)!==true) {
+                throw new RuntimeException('Explicit approval of fiscal status refresh required');
+            }
+            return;
+        }
+        if ($name==='api.nfse.invoices.fiscal-decision.store') {
+            $this->only($body,['decision','reason','justification','evidence_reference']);
+            $decision=$body['decision']??null;
+            $reason=$body['reason']??null;
+            $justification=$body['justification']??null;
+            $evidence=$body['evidence_reference']??null;
+            if (!in_array($decision,['do_not_issue','not_applicable','issue','reversed'],true)
+                || !in_array($reason,['operational_review','external_issuance',
+                    'non_service_revenue','tax_recovery','financial_adjustment',
+                    'other','reconsidered'],true)
+                || !is_string($justification)
+                || mb_strlen(trim($justification))<12 || mb_strlen($justification)>4000
+                || preg_match('/[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F\\x7F]/',$justification)===1
+                || ($evidence!==null && (!is_string($evidence)
+                    || mb_strlen($evidence)>255
+                    || preg_match('/[\\x00-\\x1F\\x7F]/',$evidence)===1))
+                || ($decision==='not_applicable'
+                    && (!is_string($evidence) || mb_strlen(trim($evidence))<5))
+                || ($decision==='reversed' && $reason!=='reconsidered')) {
+                throw new RuntimeException('Invalid operator fiscal decision evidence');
+            }
+            return;
+        }
+        if ($name==='api.nfse.settings.category-issuance.store') {
+            $this->only($body,['category_id','mode','justification']);
+            $justification=$body['justification']??null;
+            if (!is_int($body['category_id']??null) || $body['category_id']<=0
+                || !in_array($body['mode']??null,['issue','do_not_issue'],true)
+                || !is_string($justification)
+                || mb_strlen(trim($justification))<12 || mb_strlen($justification)>4000
+                || preg_match('/[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F\\x7F]/',$justification)===1) {
+                throw new RuntimeException('Invalid fiscal category authorization');
+            }
+            return;
+        }
+        if ($name==='api.nfse.adn.documents.ignore') {
+            $this->only($body,['confirmed']);
+            if (($body['confirmed']??null)!==true) {
+                throw new RuntimeException('ADN document dismissal requires explicit approval');
+            }
+            return;
+        }
+        if ($name==='api.nfse.adn.distribution.consult') {
+            // Remote national distribution may consume a cursor and return
+            // signed fiscal documents. The operator confirms one bounded call.
+            // Omit cnpj: the module derives it from the selected company's PFX.
+            $this->only($body,['nsu','lote','confirmed']);
+            if (!is_int($body['nsu']??null) || $body['nsu']<0
+                || $body['nsu']>2147483647 || !is_bool($body['lote']??null)
+                || ($body['confirmed']??null)!==true) {
+                throw new RuntimeException('National ADN consultation requires bounded approved cursor');
+            }
+            return;
+        }
+        if ($name==='api.nfse.municipal-parameters.consult') {
+            $this->only($body,['municipio_ibge','service_code','competence','confirmed']);
+            if (!is_string($body['municipio_ibge']??null)
+                || preg_match('/^[0-9]{7}$/D',$body['municipio_ibge'])!==1
+                || !is_string($body['service_code']??null)
+                || preg_match('/^[0-9]{9}$/D',$body['service_code'])!==1
+                || !$this->validDate($body['competence']??null)
+                || ($body['confirmed']??null)!==true) {
+                throw new RuntimeException('Municipal advisory consultation needs precise approved context');
+            }
+            return;
+        }
+        if ($name==='api.nfse.adn.documents.import') {
+            // Creating a vendor is a separate permission and approval workflow.
+            // This route is restricted to previously reviewed company vendors.
+            $this->only($body,[
+                'contact_id','category_id','item_id','issued_at','due_at','confirmed',
+            ]);
+            foreach (['contact_id','category_id','item_id'] as $field) {
+                if (!is_int($body[$field]??null)
+                    || $body[$field]<1 || $body[$field]>2147483647) {
+                    throw new RuntimeException('Existing vendor, expense category and item required');
+                }
+            }
+            if (!$this->validDate($body['issued_at']??null)
+                || !$this->validDate($body['due_at']??null)
+                || $body['due_at']<$body['issued_at']
+                || ($body['confirmed']??null)!==true) {
+                throw new RuntimeException('Explicit, chronological ADN draft import required');
+            }
+            return;
         }
         if ($name==='api.nfse.dps.advance') {
             $this->only($body,[
@@ -354,23 +590,254 @@ final class NfseWriteCatalog
         Api $api, array $creds, int $company, string $route, array $params, array $body
     ): string {
         $reader=new NfseReadService($api);
-        $profileResponse=$reader->read($creds,$company,[
-            'route'=>'api.nfse.settings.company-profiles.index',
-        ])['response'];
-        $profiles=$profileResponse['profiles']??null;
-        if (!is_array($profiles)) throw new RuntimeException('Fiscal profile unavailable');
         $profile=null;
-        foreach ($profiles as $candidate) {
-            if (is_array($candidate) && ($candidate['company_id']??null)===$company) {
-                $profile=$candidate;
-                break;
+        $snapshot=[];
+        // Non-transmitting operations are available to authorized companies
+        // even before fiscal issuance is configured. They still require an
+        // independent approved state snapshot and native route permissions.
+        $noIssuancePrerequisite=in_array($route,[
+            'api.nfse.settings.email-footer.update',
+            'api.nfse.settings.artifacts.update',
+            'api.nfse.settings.company-profiles.cleanup',
+            'api.nfse.settings.company-profiles.destroy',
+            'api.nfse.invoices.email-preferences.store',
+            'api.nfse.settings.category-issuance.store',
+            'api.nfse.invoices.fiscal-decision.store',
+            'api.nfse.adn.documents.ignore',
+            'api.nfse.adn.documents.import',
+        ],true);
+        if (!$noIssuancePrerequisite) {
+            $profileResponse=$reader->read($creds,$company,[
+                'route'=>'api.nfse.settings.company-profiles.index',
+            ])['response'];
+            $profiles=$profileResponse['profiles']??null;
+            if (!is_array($profiles)) throw new RuntimeException('Fiscal profile unavailable');
+            foreach ($profiles as $candidate) {
+                if (is_array($candidate) && ($candidate['company_id']??null)===$company) {
+                    $profile=$candidate;
+                    break;
+                }
             }
+            if ($profile===null || ($profile['status']??null)!=='active') {
+                throw new RuntimeException('Active fiscal profile required');
+            }
+            $snapshot['profile']=$profile;
         }
-        if ($profile===null || ($profile['status']??null)!=='active') {
-            throw new RuntimeException('Active fiscal profile required');
+        if ($route==='api.nfse.municipal-parameters.consult') {
+            $municipality=$profile['fiscal_parameters']['municipio_ibge']??null;
+            if (!is_string($municipality) || $municipality!==$body['municipio_ibge']) {
+                throw new RuntimeException('Municipal advisory context differs from selected company');
+            }
+            $snapshot['municipal_consultation']=[
+                'municipio_ibge'=>$municipality,
+                'service_code'=>$body['service_code'],
+                'competence'=>$body['competence'],
+                'environment'=>$profile['fiscal_parameters']['sandbox_mode']??null,
+            ];
+        } elseif ($route==='api.nfse.adn.distribution.consult') {
+            // Certificate metadata is intentionally redacted from the MCP.
+            // The module independently selects the company-bound certificate.
+            $snapshot['adn_consultation']=[
+                'nsu'=>$body['nsu'],'lote'=>$body['lote'],
+                'profile_revision'=>$profile['version']??null,
+                'environment'=>$profile['fiscal_parameters']['sandbox_mode']??null,
+            ];
         }
-        $snapshot=['profile'=>$profile];
-        if ($route==='api.nfse.dps.advance') {
+        if (in_array($route,[
+            'api.nfse.settings.company-profiles.cleanup',
+            'api.nfse.settings.company-profiles.destroy',
+        ],true)) {
+            $profiles=$reader->read($creds,$company,[
+                'route'=>'api.nfse.settings.company-profiles.index',
+            ])['response']['profiles']??null;
+            if (!is_array($profiles) || !array_is_list($profiles)) {
+                throw new RuntimeException('Fiscal profile status unavailable');
+            }
+            $matches=array_values(array_filter($profiles,static fn (mixed $row): bool =>
+                is_array($row) && ($row['company_id']??null)===$company
+            ));
+            if (count($matches)!==1) {
+                throw new RuntimeException('Company fiscal profile not present');
+            }
+            $current=$matches[0];
+            if (($current['status']??null)!==$body['expected_status']
+                || ($current['cleanup_pending']??null)!==$body['expected_cleanup_pending']) {
+                throw new RuntimeException('Fiscal profile state changed before destructive approval');
+            }
+            $snapshot['company_fiscal_profile']=$current;
+        } elseif ($route==='api.nfse.settings.artifacts.update') {
+            $current=$reader->read($creds,$company,[
+                'route'=>'api.nfse.settings.artifacts.show',
+            ])['response']['data']??null;
+            if (!is_array($current)
+                || !in_array($current['path_scope']??null,['company','configured'],true)) {
+                throw new RuntimeException('Current WebDAV archive policy unavailable');
+            }
+            // No mutation is prepared using a returned endpoint URL or secret.
+            // Changing archival semantics always requires a fresh approval.
+            $snapshot['webdav_artifact_policy']=$current;
+        } elseif ($route==='api.nfse.settings.email-footer.update') {
+            $snapshot['email_footer']=$reader->read($creds,$company,[
+                'route'=>'api.nfse.settings.email-footer.show',
+            ])['response'];
+        } elseif ($route==='api.nfse.invoices.email-preferences.store') {
+            $invoiceId=$params['invoice']??null;
+            if (!is_int($invoiceId)) throw new RuntimeException('Invoice ID required');
+            $invoice=$api->get($creds['email'],$creds['password'],
+                '/documents/'.$invoiceId,[
+                    'company_id'=>$company,'search'=>'type:invoice',
+                ])['data']??null;
+            if (!is_array($invoice) || array_is_list($invoice)
+                || ($invoice['id']??null)!==$invoiceId
+                || (int)($invoice['company_id']??0)!==$company
+                || ($invoice['type']??null)!=='invoice'
+                || !is_int($invoice['contact_id']??null)
+                || $invoice['contact_id']<=0) {
+                throw new RuntimeException('Invoice or customer does not belong to selected company');
+            }
+            ReadResponseGuard::assertNestedCompany($invoice,$company);
+            $snapshot['invoice']=$invoice;
+            $snapshot['email_preferences']=$reader->read($creds,$company,[
+                'route'=>'api.nfse.invoices.email-preferences.show',
+                'route_params'=>['invoice'=>$invoiceId],
+            ])['response'];
+        } elseif ($route==='api.nfse.invoices.refresh-all') {
+            $snapshot['ledger']=$reader->read($creds,$company,[
+                'route'=>'api.nfse.ledger.index',
+                'nfse_filters'=>['page'=>1,'limit'=>50],
+            ])['response'];
+        } elseif ($route==='api.nfse.settings.category-issuance.store') {
+            $catalog=$reader->read($creds,$company,[
+                'route'=>'api.nfse.settings.category-issuance.index',
+            ])['response']['data']??null;
+            if (!is_array($catalog) || !array_is_list($catalog)) {
+                throw new RuntimeException('Fiscal category catalog unavailable');
+            }
+            $matching=array_values(array_filter($catalog,static fn (mixed $item): bool =>
+                is_array($item)
+                && ($item['id']??null)===$body['category_id']
+                && ($item['company_id']??null)===$company
+            ));
+            if (count($matching)!==1
+                || ($body['mode']==='issue' && ($matching[0]['can_issue']??null)!==true)) {
+                throw new RuntimeException('Category does not permit the approved fiscal policy');
+            }
+            $snapshot['category']=$matching[0];
+        } elseif ($route==='api.nfse.invoices.fiscal-decision.store') {
+            $invoiceId=$params['invoice']??null;
+            if (!is_int($invoiceId)) throw new RuntimeException('Invoice ID required');
+            $invoice=$api->get($creds['email'],$creds['password'],
+                '/documents/'.$invoiceId,[
+                    'company_id'=>$company,'search'=>'type:invoice',
+                ])['data']??null;
+            if (!is_array($invoice) || array_is_list($invoice)
+                || ($invoice['id']??null)!==$invoiceId
+                || (int)($invoice['company_id']??0)!==$company
+                || ($invoice['type']??null)!=='invoice') {
+                throw new RuntimeException('Invoice does not belong to selected company');
+            }
+            ReadResponseGuard::assertNestedCompany($invoice,$company);
+            // Fiscal decision history is a live, explicitly annotated
+            // read contract. Keep response-field projection, tenancy checks
+            // and discovery validation; never bypass it via a static GET.
+            $decision=(new ApiBrowser($api))->read($creds,$company,[
+                'route'=>'api.nfse.invoices.fiscal-decision.show',
+                'route_params'=>['invoice'=>$invoiceId],
+            ])['response']['data']??null;
+            if (!is_array($decision)
+                || !array_key_exists('current',$decision)
+                || !array_key_exists('history',$decision)
+                || !is_array($decision['history'])) {
+                throw new RuntimeException('Fiscal decision history unavailable');
+            }
+            if ($body['decision']==='reversed'
+                && (!is_array($decision['current'])
+                    || ($decision['current']['decision']??null)==='reversed')) {
+                throw new RuntimeException('No active fiscal decision to reverse');
+            }
+            $fiscalStatus=$reader->read($creds,$company,[
+                'route'=>'api.nfse.invoices.post-emission-status',
+                'route_params'=>['invoice'=>$invoiceId],
+            ])['response']['data']??null;
+            $attempts=$reader->read($creds,$company,[
+                'route'=>'api.nfse.invoices.emission-attempts.index',
+                'route_params'=>['invoice'=>$invoiceId],
+            ])['response'];
+            if (!is_array($fiscalStatus) || !is_array($attempts)) {
+                throw new RuntimeException('Fiscal state cannot be verified for operator decision');
+            }
+            $snapshot['invoice']=$invoice;
+            $snapshot['decision']=$decision;
+            $snapshot['fiscal_status']=$fiscalStatus;
+            $snapshot['attempts']=$attempts;
+            if ($body['decision']==='issue') {
+                $categories=$reader->read($creds,$company,[
+                    'route'=>'api.nfse.settings.category-issuance.index',
+                ])['response']['data']??null;
+                if (!is_array($categories) || !array_is_list($categories)
+                    || !is_int($invoice['category_id']??null)) {
+                    throw new RuntimeException('Fiscal issuance category unavailable');
+                }
+                $authorized=array_values(array_filter($categories,static fn (mixed $row): bool =>
+                    is_array($row)
+                    && ($row['id']??null)===$invoice['category_id']
+                    && ($row['company_id']??null)===$company
+                    && ($row['can_issue']??null)===true
+                    && ($row['policy']['mode']??null)==='issue'
+                ));
+                if (count($authorized)!==1) {
+                    throw new RuntimeException('Invoice category is not authorized to issue');
+                }
+                $snapshot['category_policy']=$authorized[0];
+            }
+        } elseif (in_array($route,[
+            'api.nfse.adn.documents.ignore','api.nfse.adn.documents.import',
+        ],true)) {
+            $documentId=$params['document']??null;
+            if (!is_int($documentId)) throw new RuntimeException('ADN document ID required');
+            $preview=$reader->read($creds,$company,[
+                'route'=>'api.nfse.adn.documents.preview',
+                'route_params'=>['document'=>$documentId],
+            ])['response']['data']??null;
+            if (!is_array($preview)
+                || ($preview['document_id']??null)!==$documentId
+                || !in_array($preview['fiscal_role']??null,['received','intermediated'],true)
+                || ($preview['review_status']??null)!=='pending') {
+                throw new RuntimeException('ADN document is not pending company review');
+            }
+            $snapshot['adn_preview']=$preview;
+            if ($route==='api.nfse.adn.documents.import') {
+                $options=$reader->read($creds,$company,[
+                    'route'=>'api.nfse.adn.review-options',
+                ])['response']['data']??null;
+                if (!is_array($options) || ($options['can_import']??null)!==true) {
+                    throw new RuntimeException('Current operator cannot import an ADN draft');
+                }
+                $mapping=[];
+                foreach ([
+                    'contact_id'=>'vendors','category_id'=>'categories','item_id'=>'items',
+                ] as $key=>$collection) {
+                    $choices=$options[$collection]??null;
+                    if (!is_array($choices) || !array_is_list($choices)) {
+                        throw new RuntimeException('ADN accounting mapping unavailable');
+                    }
+                    $matches=array_values(array_filter($choices,static fn (mixed $row): bool =>
+                        is_array($row) && ($row['id']??null)===$body[$key]
+                    ));
+                    if (count($matches)!==1) {
+                        throw new RuntimeException('ADN mapping does not belong to active company');
+                    }
+                    $mapping[$collection]=$matches[0];
+                }
+                $snapshot['adn_mapping']=$mapping;
+            }
+        } elseif (in_array($route,[
+            'api.nfse.adn.distribution.consult',
+            'api.nfse.municipal-parameters.consult',
+        ],true)) {
+            // The selected active profile and exact approved query are
+            // already frozen above. Never call the national service here.
+        } elseif ($route==='api.nfse.dps.advance') {
             $readiness=$reader->read($creds,$company,[
                 'route'=>'api.nfse.dps.readiness',
             ])['response']['data']??null;
@@ -614,6 +1081,72 @@ final class NfseWriteCatalog
     {
         return is_string($value) && strlen($value)>0 && strlen($value)<=191
             && preg_match('/^[a-zA-Z0-9:_|.\-]+$/D',$value)===1;
+    }
+
+    /**
+     * Approved remote consultations return only bounded operational evidence
+     * in the tool result, not raw national XML or full municipal payloads.
+     * @param array<string,mixed> $response
+     * @return array<string,mixed>|null
+     */
+    public function consultationSummary(string $route, array $response, int $company): ?array
+    {
+        if (!in_array($route,[
+            'api.nfse.adn.distribution.consult',
+            'api.nfse.municipal-parameters.consult',
+        ],true)) {
+            return null;
+        }
+        $outer=$response['data']??null;
+        $payload=is_array($outer)?($outer['data']??null):null;
+        if (!is_array($payload)) {
+            throw new RuntimeException('Approved national consultation has no typed response');
+        }
+        if ($route==='api.nfse.adn.distribution.consult') {
+            $documents=$payload['documents']??null;
+            $reconciliation=$payload['reconciliation']??null;
+            $cursor=$payload['ultimo_nsu']??null;
+            if (!is_array($documents) || !array_is_list($documents)
+                || count($documents)>100
+                || !is_array($reconciliation)
+                || !is_int($reconciliation['matched']??null)
+                || !is_int($reconciliation['unmatched']??null)
+                || !(is_string($cursor)||is_int($cursor))
+                || preg_match('/^[0-9]{1,15}$/D',(string)$cursor)!==1) {
+                throw new RuntimeException('Unsafe national ADN consultation response');
+            }
+            foreach ($documents as $document) {
+                if (!is_array($document) || array_key_exists('xml',$document)) {
+                    throw new RuntimeException('ADN consultation must never release raw XML via MCP');
+                }
+            }
+            return [
+                'ultimo_nsu'=>(string)$cursor,
+                'documents'=>count($documents),
+                'matched'=>$reconciliation['matched'],
+                'unmatched'=>$reconciliation['unmatched'],
+                'xml_exposed'=>false,
+            ];
+        }
+        $meta=$outer['meta']??null;
+        if (!is_array($meta)
+            || !in_array($meta['source']??null,['live','cache'],true)
+            || !is_bool($meta['stale']??null)
+            || ($meta['company_id']??null)!==$company
+            || !is_string($meta['municipio_ibge']??null)
+            || !is_string($meta['service_code']??null)
+            || !is_string($meta['competence']??null)) {
+            throw new RuntimeException('Unsafe municipal advisory response');
+        }
+        return [
+            'source'=>$meta['source'],
+            'stale'=>$meta['stale'],
+            'company_id'=>$meta['company_id'],
+            'municipio_ibge'=>$meta['municipio_ibge'],
+            'service_code'=>$meta['service_code'],
+            'competence'=>$meta['competence'],
+            'advisory_only'=>true,
+        ];
     }
 
     private function validDate(mixed $value): bool

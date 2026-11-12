@@ -186,6 +186,7 @@ final class HttpSmokeIntegrationTest extends TestCase
         $webdav=json_decode($webdavRead['result']['content'][0]['text'] ?? '{}',true,16,JSON_THROW_ON_ERROR);
         self::assertTrue(($webdavRead['result']['isError']??true)===false
             && ($webdav['response']['data']['host']??null)==='dav.example.invalid'
+            && ($webdav['response']['data']['path_scope']??null)==='company'
             && ($webdav['response']['data']['password_configured']??null)===true
             && !array_key_exists('webdav_url',$webdav['response']['data']??[])
             && !array_key_exists('webdav_password',$webdav['response']['data']??[]),

@@ -54,8 +54,24 @@ final class NfseWriteBehaviorTest extends TestCase
             public string $receiptNumber='9900123';
             public int $invoiceCompany=1;
             public int $profileVersion=1;
+            public bool $profileActive=true;
+            public bool $profileCleanupPending=true;
             public string $groupKey='service:0107|tax:010701|mun:123|rate:5.00';
             public ?string $eventDate=null;
+            public int $categoryVersion=1;
+            public bool $webDavStoreXml=true;
+            public string $webDavTemplate='nfse/{cnpj}/{year}';
+            public bool $categoryCanIssue=true;
+            public string $categoryMode='issue';
+            public int $fiscalDecisionVersion=0;
+            public bool $decisionDiscoveryAvailable=true;
+            public string $adnReviewStatus='pending';
+            public int $adnDocumentId=11;
+            public int $adnCompany=1;
+            public bool $adnCanImport=true;
+            public int $adnVendorId=19;
+            public int $adnCategoryId=31;
+            public int $adnItemId=41;
 
             public function verify(string $email,string $password,int $companyId): void
             {
@@ -65,15 +81,99 @@ final class NfseWriteBehaviorTest extends TestCase
 
             public function get(string $email,string $password,string $path,array $query=[]): array
             {
+                if ($path==='/nfse/discovery') {
+                    if (!$this->decisionDiscoveryAvailable) {
+                        throw new RuntimeException('Akaunting request rejected (HTTP 404)');
+                    }
+                    return [
+                        'version'=>1,'company_id'=>1,
+                        'routes'=>[[
+                            'name'=>'api.nfse.invoices.fiscal-decision.show',
+                            'uri'=>'{company_id}/api/nfse/invoices/{invoice}/fiscal-decision',
+                            'method'=>'GET','scope'=>'invoice','params'=>['invoice'],
+                            'query'=>[],
+                            'response_paths'=>[
+                                '/data/current','/data/effective','/data/history',
+                            ],
+                            'permissions'=>['read-sales-invoices'],
+                        ]],
+                    ];
+                }
                 if ($path==='/nfse/settings/company-profiles') {
                     return ['profiles'=>[[
-                        'company_id'=>1,'status'=>'active',
+                        'company_id'=>1,'status'=>$this->profileActive?'active':'inactive',
                         'fiscal_parameters'=>[
                             'sandbox_mode'=>$this->sandbox?'1':'0',
                             'dps_series'=>'00001',
+                            'municipio_ibge'=>'3304557',
                         ],
+                        'certificate_cnpj'=>'12345678000199',
                         'version'=>$this->profileVersion,
+                        'cleanup_pending'=>$this->profileCleanupPending,
                     ]], 'eligible_companies'=>[]];
+                }
+                if ($path==='/nfse/settings/email-footer') {
+                    return ['data'=>[
+                        'footer_message'=>'Initial synthetic company footer',
+                        'footer_url'=>'https://footer.example.test/previous',
+                    ]];
+                }
+                if ($path==='/nfse/settings/artifacts') {
+                    return ['data'=>[
+                        'configured'=>true,'host'=>'dav.example.invalid',
+                        'username_configured'=>true,'password_configured'=>true,
+                        'path_template'=>$this->webDavTemplate,
+                        'path_scope'=>'company',
+                        'filename_template'=>'{chave_acesso}',
+                        'store_xml'=>$this->webDavStoreXml,
+                        'store_pdf'=>true,
+                    ]];
+                }
+                if ($path==='/nfse/invoices/7/email-preferences') {
+                    return ['data'=>[
+                        'configured'=>false,'subject'=>'','body'=>'',
+                    ]];
+                }
+                if ($path==='/nfse/settings/category-issuance') {
+                    return ['data'=>[[
+                        'id'=>9,'company_id'=>1,'name'=>'Synthetic income',
+                        'type'=>'income','enabled'=>true,
+                        'can_issue'=>$this->categoryCanIssue,
+                        'policy'=>['id'=>$this->categoryVersion,'mode'=>$this->categoryMode],
+                    ]]];
+                }
+                if ($path==='/nfse/invoices/7/fiscal-decision') {
+                    $current=$this->fiscalDecisionVersion===0?null:[
+                        'id'=>$this->fiscalDecisionVersion,'company_id'=>1,
+                        'invoice_id'=>7,'decision'=>'do_not_issue',
+                        'reason'=>'operational_review',
+                    ];
+                    return ['data'=>[
+                        'current'=>$current,
+                        'effective'=>$current,
+                        'history'=>$current===null?[]:[$current],
+                    ]];
+                }
+                if ($path==='/nfse/invoices/7/emission-attempts') {
+                    return ['data'=>[]];
+                }
+                if ($path==='/nfse/adn/review-options') {
+                    return ['data'=>[
+                        'can_import'=>$this->adnCanImport,
+                        'vendors'=>[['id'=>$this->adnVendorId,'name'=>'Synthetic vendor']],
+                        'categories'=>[['id'=>$this->adnCategoryId,'name'=>'Synthetic expense']],
+                        'items'=>[['id'=>$this->adnItemId,'name'=>'Synthetic service']],
+                    ]];
+                }
+                if ($path==='/nfse/adn/documents/11/preview') {
+                    return ['data'=>[
+                        'document_id'=>$this->adnDocumentId,
+                        'fiscal_role'=>'received',
+                        'review_status'=>$this->adnReviewStatus,
+                        'company_id'=>$this->adnCompany,
+                        'accounting_preview'=>['gross_value'=>'100.00'],
+                        'ibs_cbs_credit_candidate'=>null,
+                    ]];
                 }
                 if ($path==='/nfse/settings/tax-associations') {
                     return ['data'=>['taxes'=>[[
@@ -88,6 +188,7 @@ final class NfseWriteBehaviorTest extends TestCase
                     return ['data'=>[
                         'id'=>(int)basename($path),
                         'company_id'=>$this->invoiceCompany,'type'=>'invoice',
+                        'contact_id'=>12,'category_id'=>9,
                     ]];
                 }
                 if ($path==='/nfse/invoices/7/post-emission-status') {
@@ -139,11 +240,40 @@ final class NfseWriteBehaviorTest extends TestCase
                 throw new RuntimeException('Unreviewed synthetic read: '.$path);
             }
 
+            public function getDiscovered(
+                string $email,string $password,array $approved,array $query
+            ): array {
+                if (($approved['path']??null)!=='/nfse/invoices/7/fiscal-decision'
+                    || ($approved['company_id']??null)!==1
+                    || ($query['company_id']??null)!==1) {
+                    throw new RuntimeException('Unsafe synthetic discovered read');
+                }
+                return $this->get($email,$password,$approved['path'],$query);
+            }
+
             public function mutate(
                 string $email,string $password,string $method,string $path,int $companyId,array $body,?string $recordType=null
             ): array {
                 ++$this->writes;
                 $this->lastWrite=compact('method','path','companyId','body','recordType');
+                if ($path==='/nfse/adn/distribution/consult') {
+                    return ['http_status'=>200,'data'=>['data'=>[
+                        'ultimo_nsu'=>'42',
+                        'documents'=>[['nsu'=>'42','signature_integrity'=>'valid']],
+                        'reconciliation'=>['matched'=>1,'unmatched'=>0],
+                    ]]];
+                }
+                if ($path==='/nfse/municipal-parameters/consult') {
+                    return ['http_status'=>200,'data'=>[
+                        'data'=>['aliquota'=>['value'=>'2.00']],
+                        'meta'=>[
+                            'source'=>'live','stale'=>false,'company_id'=>1,
+                            'municipio_ibge'=>'3304557',
+                            'service_code'=>'010701000',
+                            'competence'=>'2026-11-12',
+                        ],
+                    ]];
+                }
                 return ['http_status'=>$method==='DELETE'?204:200];
             }
         };
@@ -179,6 +309,522 @@ final class NfseWriteBehaviorTest extends TestCase
             $view['request_id'],$view['csrf'],$view['cookie'],
             'approve','member@example.invalid','correct-password',$phrase,
         );
+    }
+
+    public function testAuxiliaryNfseMutationsAreTypedAndRequireHumanApproval(): void
+    {
+        $footer=[
+            'footer_message'=>'Synthetic company footer',
+            'footer_url'=>'https://footer.example.test/current',
+        ];
+        $proposal=$this->prepare('api.nfse.settings.email-footer.update','PATCH',[],$footer);
+        self::assertSame(0,$this->client->writes);
+        self::assertSame('completed',$this->approve($proposal)['status']);
+        self::assertSame('/nfse/settings/email-footer',$this->client->lastWrite['path']);
+        self::assertSame('PATCH',$this->client->lastWrite['method']);
+
+        $template=['subject'=>'Synthetic email subject','body'=>'<p>Synthetic email text</p>'];
+        $proposal=$this->prepare('api.nfse.invoices.email-preferences.store','POST',
+            ['invoice'=>7],$template);
+        self::assertSame(1,$this->client->writes);
+        self::assertSame('completed',$this->approve($proposal)['status']);
+        self::assertSame('/nfse/invoices/7/email-preferences',$this->client->lastWrite['path']);
+
+        $proposal=$this->prepare('api.nfse.invoices.refresh-all','POST',
+            [],['confirmed'=>true]);
+        self::assertSame(2,$this->client->writes);
+        self::assertSame('completed',$this->approve($proposal)['status']);
+        self::assertSame('/nfse/invoices/refresh-all',$this->client->lastWrite['path']);
+        self::assertSame(3,$this->client->writes);
+
+        foreach ([
+            ['api.nfse.settings.email-footer.update','PATCH',[],[
+                'footer_message'=>'Synthetic','footer_url'=>'https://user:pass@footer.example.test',
+            ]],
+            ['api.nfse.settings.email-footer.update','PATCH',[],[
+                'footer_message'=>'Synthetic','footer_url'=>'http://insecure.example.test',
+            ]],
+            ['api.nfse.invoices.email-preferences.store','POST',['invoice'=>7],[
+                'subject'=>'','body'=>'<p>Empty subject</p>',
+            ]],
+            ['api.nfse.invoices.email-preferences.store','POST',['invoice'=>7],[
+                'subject'=>'Synthetic','body'=>'<p>Hello</p>','company_id'=>2,
+            ]],
+            ['api.nfse.invoices.refresh-all','POST',[],['confirmed'=>false]],
+            ['api.nfse.invoices.refresh-all','POST',[],['confirmed'=>true,'force_emit'=>true]],
+        ] as [$route,$method,$params,$body]) {
+            try {
+                $this->prepare($route,$method,$params,$body);
+                self::fail('Unsafe auxiliary NFS-e mutation was prepared');
+            } catch (RuntimeException) {
+                self::assertSame(3,$this->client->writes);
+            }
+        }
+    }
+
+    public function testNationalAdnConsultationNeedsOneUseApprovalAndRedactsFiscalXml(): void
+    {
+        $route='api.nfse.adn.distribution.consult';
+        $body=['nsu'=>41,'lote'=>true,'confirmed'=>true];
+        $plan=$this->prepare($route,'POST',[],$body);
+        self::assertSame(0,$this->client->writes);
+        $result=$this->approve($plan);
+        self::assertSame('completed',$result['status']);
+        self::assertSame('42',$result['consultation_summary']['ultimo_nsu']);
+        self::assertSame(1,$result['consultation_summary']['documents']);
+        self::assertFalse($result['consultation_summary']['xml_exposed']);
+        self::assertSame('/nfse/adn/distribution/consult',$this->client->lastWrite['path']);
+        self::assertSame($body,$this->client->lastWrite['body']);
+
+        foreach ([
+            [...$body,'confirmed'=>false],
+            [...$body,'cnpj'=>'12345678000199'],
+            [...$body,'nsu'=>-1],
+            [...$body,'nsu'=>'41'],
+            [...$body,'lote'=>'1'],
+            [...$body,'access_key'=>'fake'],
+        ] as $bad) {
+            try {
+                $this->prepare($route,'POST',[],$bad);
+                self::fail('Unapproved national ADN consultation accepted');
+            } catch (RuntimeException) {
+                self::assertSame(1,$this->client->writes);
+            }
+        }
+        $plan=$this->prepare($route,'POST',[],$body);
+        $this->client->profileVersion=2;
+        try {
+            $this->approve($plan);
+            self::fail('Changed fiscal company certificate was not rechecked');
+        } catch (RuntimeException) {
+            self::assertSame(1,$this->client->writes);
+        }
+        $catalog=new NfseWriteCatalog();
+        try {
+            $catalog->consultationSummary($route,[
+                'data'=>['data'=>[
+                    'ultimo_nsu'=>'42','documents'=>[['xml'=>'<NFSe>SECRET</NFSe>']],
+                    'reconciliation'=>['matched'=>0,'unmatched'=>1],
+                ]],
+            ],1);
+            self::fail('Raw XML document escaped approved result projection');
+        } catch (RuntimeException) {
+            self::assertSame(1,$this->client->writes);
+        }
+    }
+
+    public function testMunicipalParameterConsultationRequiresSelectedCompanyContext(): void
+    {
+        $route='api.nfse.municipal-parameters.consult';
+        $body=[
+            'municipio_ibge'=>'3304557','service_code'=>'010701000',
+            'competence'=>'2026-11-12','confirmed'=>true,
+        ];
+        $plan=$this->prepare($route,'POST',[],$body);
+        self::assertSame(0,$this->client->writes);
+        $result=$this->approve($plan);
+        self::assertSame('completed',$result['status']);
+        self::assertSame('live',$result['consultation_summary']['source']);
+        self::assertFalse($result['consultation_summary']['stale']);
+        self::assertTrue($result['consultation_summary']['advisory_only']);
+        self::assertArrayNotHasKey('aliquota',$result['consultation_summary']);
+
+        foreach ([
+            [...$body,'municipio_ibge'=>'3303302'],
+            [...$body,'service_code'=>'invalid'],
+            [...$body,'competence'=>'2026-02-30'],
+            [...$body,'confirmed'=>false],
+            [...$body,'environment'=>'production'],
+        ] as $bad) {
+            try {
+                $this->prepare($route,'POST',[],$bad);
+                self::fail('Untrusted municipal advisory context was approved');
+            } catch (RuntimeException) {
+                self::assertSame(1,$this->client->writes);
+            }
+        }
+        $plan=$this->prepare($route,'POST',[],$body);
+        $this->client->profileVersion=2;
+        try {
+            $this->approve($plan);
+            self::fail('Stale fiscal profile was accepted for municipal advisory');
+        } catch (RuntimeException) {
+            self::assertSame(1,$this->client->writes);
+        }
+    }
+
+    public function testDestructiveFiscalProfileOperationsRequireExactStateAndApproval(): void
+    {
+        $body=[
+            'confirmed'=>true,
+            'expected_status'=>'active',
+            'expected_cleanup_pending'=>true,
+        ];
+        $cleanup='api.nfse.settings.company-profiles.cleanup';
+        $destroy='api.nfse.settings.company-profiles.destroy';
+        $prepared=$this->prepare($cleanup,'POST',['companyId'=>1],$body);
+        self::assertSame(0,$this->client->writes);
+        self::assertSame('completed',$this->approve($prepared)['status']);
+        self::assertSame('/nfse/settings/company-profiles/1/cleanup',$this->client->lastWrite['path']);
+
+        $prepared=$this->prepare($destroy,'DELETE',['companyId'=>1],$body);
+        try {
+            $this->approve($prepared,'CANCELAR');
+            self::fail('Fiscal profile deletion used cancellation phrase instead of EXCLUIR');
+        } catch (RuntimeException) {
+            self::assertSame(1,$this->client->writes);
+        }
+        // The wrong confirmation did not consume the browser proposal.
+        self::assertSame('completed',$this->approve($prepared,'EXCLUIR')['status']);
+        self::assertSame('DELETE',$this->client->lastWrite['method']);
+        self::assertSame('/nfse/settings/company-profiles/1',$this->client->lastWrite['path']);
+
+        foreach ([
+            [2,$body],
+            [1,[...$body,'confirmed'=>false]],
+            [1,[...$body,'expected_status'=>'unknown']],
+            [1,[...$body,'force'=>true]],
+            [1,[...$body,'expected_cleanup_pending'=>0]],
+        ] as [$target,$bad]) {
+            try {
+                $this->prepare($destroy,'DELETE',['companyId'=>$target],$bad);
+                self::fail('Unsafe fiscal profile deletion prepared');
+            } catch (RuntimeException) {
+                self::assertSame(2,$this->client->writes);
+            }
+        }
+
+        $prepared=$this->prepare($destroy,'DELETE',['companyId'=>1],$body);
+        $this->client->profileVersion=2;
+        try {
+            $this->approve($prepared,'EXCLUIR');
+            self::fail('Stale fiscal profile deletion executed');
+        } catch (RuntimeException) {
+            self::assertSame(2,$this->client->writes);
+        }
+
+        $this->client->profileCleanupPending=false;
+        try {
+            $this->prepare($cleanup,'POST',['companyId'=>1],[
+                'confirmed'=>true,'expected_status'=>'active',
+                'expected_cleanup_pending'=>false,
+            ]);
+            self::fail('Unnecessary cleanup accepted for active clean profile');
+        } catch (RuntimeException) {
+            self::assertSame(2,$this->client->writes);
+        }
+    }
+
+    public function testArtifactSettingsUpdateOnlyAllowsNonSecretApprovedCompanyPolicy(): void
+    {
+        $route='api.nfse.settings.artifacts.update';
+        $body=['nfse'=>[
+            'webdav_store_xml'=>false,
+            'webdav_path_template'=>'nfse/{cnpj}/{year}/{month}',
+            'webdav_filename_template'=>'{chave_acesso}',
+            'webdav_path_scope'=>'company',
+        ]];
+        $plan=$this->prepare($route,'PATCH',[],$body);
+        self::assertSame(0,$this->client->writes);
+        self::assertSame('completed',$this->approve($plan)['status']);
+        self::assertSame('/nfse/settings/artifacts',$this->client->lastWrite['path']);
+        self::assertSame('PATCH',$this->client->lastWrite['method']);
+        self::assertSame($body,$this->client->lastWrite['body']);
+
+        foreach ([
+            ['nfse'=>['webdav_password'=>'exposed-secret']],
+            ['nfse'=>['webdav_username'=>'someone']],
+            ['nfse'=>['webdav_url'=>'https://attacker.invalid']],
+            ['nfse'=>['webdav_path_template'=>'../../escape']],
+            ['nfse'=>['webdav_path_template'=>'/']],
+            ['nfse'=>['webdav_filename_template'=>'..']],
+            ['nfse'=>['webdav_filename_template'=>'../secret']],
+            ['nfse'=>['webdav_store_xml'=>'false']],
+            ['nfse'=>['webdav_store_pdf'=>1]],
+            ['nfse'=>['webdav_path_scope'=>'configured']],
+            ['nfse'=>['webdav_path_scope'=>'unexpected']],
+            ['nfse'=>['webdav_path_template'=>'{unknown_token}']],
+            ['nfse'=>['webdav_store_xml'=>false],'company_id'=>2],
+        ] as $invalid) {
+            try {
+                $this->prepare($route,'PATCH',[],$invalid);
+                self::fail('Unapproved WebDAV secret or path setting accepted');
+            } catch (RuntimeException) {
+                self::assertSame(1,$this->client->writes);
+            }
+        }
+
+        $configured=['nfse'=>[
+            'webdav_path_scope'=>'configured',
+            'webdav_path_template'=>'Dedicated/{cnpj}/{year}',
+        ]];
+        $plan=$this->prepare($route,'PATCH',[],$configured);
+        self::assertSame('completed',$this->approve($plan)['status']);
+
+        $plan=$this->prepare($route,'PATCH',[],['nfse'=>['webdav_store_xml'=>false]]);
+        $this->client->webDavTemplate='nfse/{cnpj}/changed';
+        try {
+            $this->approve($plan);
+            self::fail('Changed WebDAV archive policy was accepted after approval');
+        } catch (RuntimeException) {
+            self::assertSame(2,$this->client->writes);
+        }
+    }
+
+    public function testCategoryFiscalPolicyRequiresReviewedCategoryAndFreshOneUseApproval(): void
+    {
+        $body=[
+            'category_id'=>9,'mode'=>'issue',
+            'justification'=>'Synthetic approval of invoice service category.',
+        ];
+        $proposal=$this->prepare('api.nfse.settings.category-issuance.store','POST',[],$body);
+        self::assertSame(0,$this->client->writes);
+        self::assertSame('completed',$this->approve($proposal)['status']);
+        self::assertSame('/nfse/settings/category-issuance',$this->client->lastWrite['path']);
+        self::assertSame($body,$this->client->lastWrite['body']);
+
+        foreach ([
+            [...$body,'category_id'=>99],
+            [...$body,'justification'=>'too short'],
+            [...$body,'mode'=>'automatic'],
+            [...$body,'company_id'=>2],
+        ] as $invalid) {
+            try {
+                $this->prepare('api.nfse.settings.category-issuance.store','POST',[],$invalid);
+                self::fail('Unsafe fiscal category proposal accepted');
+            } catch (RuntimeException) {
+                self::assertSame(1,$this->client->writes);
+            }
+        }
+
+        $this->client->categoryCanIssue=false;
+        try {
+            $this->prepare('api.nfse.settings.category-issuance.store','POST',[],$body);
+            self::fail('Disabled category was allowed to authorize fiscal issuance');
+        } catch (RuntimeException) {
+            self::assertSame(1,$this->client->writes);
+        }
+        $this->client->categoryCanIssue=true;
+
+        $proposal=$this->prepare('api.nfse.settings.category-issuance.store','POST',[],$body);
+        $this->client->categoryVersion=2;
+        try {
+            $this->approve($proposal);
+            self::fail('Changed fiscal category policy was approved with stale snapshot');
+        } catch (RuntimeException) {
+            self::assertSame(1,$this->client->writes);
+        }
+    }
+
+    public function testInvoiceFiscalDecisionRequiresCurrentInvoiceEvidenceAndOneUseApproval(): void
+    {
+        $body=[
+            'decision'=>'do_not_issue',
+            'reason'=>'operational_review',
+            'justification'=>'Synthetic invoice review with supporting evidence.',
+            'evidence_reference'=>'Synthetic memorandum 2026-11',
+        ];
+        $proposal=$this->prepare('api.nfse.invoices.fiscal-decision.store','POST',
+            ['invoice'=>7],$body);
+        self::assertSame(0,$this->client->writes);
+        self::assertSame('completed',$this->approve($proposal)['status']);
+        self::assertSame('/nfse/invoices/7/fiscal-decision',$this->client->lastWrite['path']);
+
+        foreach ([
+            [...$body,'decision'=>'exempt'],
+            [...$body,'decision'=>'not_applicable','evidence_reference'=>null],
+            [...$body,'decision'=>'reversed','reason'=>'other'],
+            [...$body,'justification'=>'too short'],
+            [...$body,'pfx_password'=>'secret'],
+        ] as $invalid) {
+            try {
+                $this->prepare('api.nfse.invoices.fiscal-decision.store','POST',
+                    ['invoice'=>7],$invalid);
+                self::fail('Unsafe invoice fiscal decision was prepared');
+            } catch (RuntimeException) {
+                self::assertSame(1,$this->client->writes);
+            }
+        }
+
+        $this->client->invoiceCompany=2;
+        try {
+            $this->prepare('api.nfse.invoices.fiscal-decision.store','POST',
+                ['invoice'=>7],$body);
+            self::fail('Foreign invoice fiscal decision accepted');
+        } catch (RuntimeException) {
+            self::assertSame(1,$this->client->writes);
+        }
+        $this->client->invoiceCompany=1;
+        $this->client->categoryCanIssue=false;
+        try {
+            $this->prepare('api.nfse.invoices.fiscal-decision.store','POST',
+                ['invoice'=>7],[...$body,'decision'=>'issue']);
+            self::fail('Ineligible invoice was authorized to issue');
+        } catch (RuntimeException) {
+            self::assertSame(1,$this->client->writes);
+        }
+        $this->client->categoryCanIssue=true;
+
+        $proposal=$this->prepare('api.nfse.invoices.fiscal-decision.store','POST',
+            ['invoice'=>7],$body);
+        $this->client->fiscalDecisionVersion=2;
+        try {
+            $this->approve($proposal);
+            self::fail('Changed fiscal decision was accepted after approval preparation');
+        } catch (RuntimeException) {
+            self::assertSame(1,$this->client->writes);
+        }
+    }
+
+    public function testFiscalDecisionRefusesMissingNativeReadDiscoveryRatherThanBypassingAcl(): void
+    {
+        $this->client->decisionDiscoveryAvailable=false;
+        try {
+            $this->prepare('api.nfse.invoices.fiscal-decision.store','POST',
+                ['invoice'=>7],[
+                    'decision'=>'do_not_issue',
+                    'reason'=>'operational_review',
+                    'justification'=>'Synthetic accounting note for fiscal decision',
+                ]);
+            self::fail('Undiscovered fiscal decision was prepared for execution');
+        } catch (RuntimeException) {
+            self::assertSame(0,$this->client->writes);
+        }
+    }
+
+    public function testAdnIgnoreRequiresCompanyOwnedPendingDocumentAndFreshApproval(): void
+    {
+        $route='api.nfse.adn.documents.ignore';
+        $body=['confirmed'=>true];
+        $proposal=$this->prepare($route,'POST',['document'=>11],$body);
+        self::assertSame(0,$this->client->writes);
+        self::assertSame('completed',$this->approve($proposal)['status']);
+        self::assertSame('/nfse/adn/documents/11/ignore',$this->client->lastWrite['path']);
+
+        foreach ([['confirmed'=>false],['confirmed'=>true,'force_import'=>true]] as $invalid) {
+            try {
+                $this->prepare($route,'POST',['document'=>11],$invalid);
+                self::fail('Invalid ADN ignore request accepted');
+            } catch (RuntimeException) {
+                self::assertSame(1,$this->client->writes);
+            }
+        }
+
+        $this->client->adnCompany=2;
+        try {
+            $this->prepare($route,'POST',['document'=>11],$body);
+            self::fail('Foreign ADN record can be dismissed');
+        } catch (RuntimeException) {
+            self::assertSame(1,$this->client->writes);
+        }
+        $this->client->adnCompany=1;
+        $proposal=$this->prepare($route,'POST',['document'=>11],$body);
+        $this->client->adnReviewStatus='imported';
+        try {
+            $this->approve($proposal);
+            self::fail('Imported ADN record can be dismissed');
+        } catch (RuntimeException) {
+            self::assertSame(1,$this->client->writes);
+        }
+    }
+
+    public function testAdnImportCreatesOnlyReviewedCompanyDraftAfterHumanApproval(): void
+    {
+        $route='api.nfse.adn.documents.import';
+        $body=[
+            'contact_id'=>19,'category_id'=>31,'item_id'=>41,
+            'issued_at'=>'2026-11-01','due_at'=>'2026-11-30',
+            'confirmed'=>true,
+        ];
+        $proposal=$this->prepare($route,'POST',['document'=>11],$body);
+        self::assertSame(0,$this->client->writes);
+        self::assertSame('completed',$this->approve($proposal)['status']);
+        self::assertSame('/nfse/adn/documents/11/import',$this->client->lastWrite['path']);
+        self::assertSame($body,$this->client->lastWrite['body']);
+
+        foreach ([
+            [...$body,'contact_id'=>99],
+            [...$body,'category_id'=>99],
+            [...$body,'item_id'=>99],
+            [...$body,'contact_id'=>'19'],
+            [...$body,'issued_at'=>'2026-02-30'],
+            [...$body,'due_at'=>'2026-10-01'],
+            [...$body,'confirmed'=>false],
+            [...$body,'create_vendor'=>true],
+            [...$body,'status'=>'paid'],
+        ] as $invalid) {
+            try {
+                $this->prepare($route,'POST',['document'=>11],$invalid);
+                self::fail('Unreviewed or unsafe imported bill mapping was accepted');
+            } catch (RuntimeException) {
+                self::assertSame(1,$this->client->writes);
+            }
+        }
+
+        $this->client->adnCanImport=false;
+        try {
+            $this->prepare($route,'POST',['document'=>11],$body);
+            self::fail('Operator without invoice creation permission imported an ADN bill');
+        } catch (RuntimeException) {
+            self::assertSame(1,$this->client->writes);
+        }
+        $this->client->adnCanImport=true;
+
+        $proposal=$this->prepare($route,'POST',['document'=>11],$body);
+        $this->client->adnItemId=42;
+        try {
+            $this->approve($proposal);
+            self::fail('Changed ADN accounting item was accepted after approval');
+        } catch (RuntimeException) {
+            self::assertSame(1,$this->client->writes);
+        }
+
+        $this->client->adnItemId=41;
+        $proposal=$this->prepare($route,'POST',['document'=>11],$body);
+        $this->client->adnReviewStatus='imported';
+        try {
+            $this->approve($proposal);
+            self::fail('Already imported ADN document was imported a second time');
+        } catch (RuntimeException) {
+            self::assertSame(1,$this->client->writes);
+        }
+    }
+
+    public function testNonTransmittingAdministrativeActionsWorkBeforeFiscalIssuerIsActivated(): void
+    {
+        $this->client->profileActive=false;
+
+        $footer=[
+            'footer_message'=>'Synthetic pre-activation footer',
+            'footer_url'=>'https://footer.example.test/activation',
+        ];
+        $proposal=$this->prepare('api.nfse.settings.email-footer.update','PATCH',[],$footer);
+        self::assertSame('completed',$this->approve($proposal)['status']);
+
+        $policy=[
+            'category_id'=>9,'mode'=>'do_not_issue',
+            'justification'=>'Synthetic policy before fiscal registration',
+        ];
+        $proposal=$this->prepare('api.nfse.settings.category-issuance.store','POST',[],$policy);
+        self::assertSame('completed',$this->approve($proposal)['status']);
+
+        $proposal=$this->prepare('api.nfse.adn.documents.ignore','POST',
+            ['document'=>11],['confirmed'=>true]);
+        self::assertSame('completed',$this->approve($proposal)['status']);
+
+        self::assertSame(3,$this->client->writes);
+
+        try {
+            $this->prepare('api.nfse.dps.advance','POST',[],[
+                'expected_next_number'=>'900000000000008',
+                'next_number'=>'900000000000100',
+                'reason'=>'Synthetic correction cannot proceed without active issuer',
+                'confirmed'=>true,
+            ]);
+            self::fail('Inactive issuer was allowed a fiscal numbering mutation');
+        } catch (RuntimeException) {
+            self::assertSame(3,$this->client->writes);
+        }
     }
 
     public function testDpsAdvanceRequiresApprovedExactCounterAndReason(): void

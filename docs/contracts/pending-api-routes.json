@@ -64,14 +64,6 @@
     "reason": "Official ADN distribution has remote side effects and requires a bounded, authorized response contract."
   },
   {
-    "route": "api.nfse.adn.documents.ignore",
-    "reason": "Document review mutation needs typed input schema and independent approval."
-  },
-  {
-    "route": "api.nfse.adn.documents.import",
-    "reason": "Imported fiscal bill draft needs typed input, company isolation, and human review."
-  },
-  {
     "route": "api.nfse.certificates.inspect",
     "reason": "Certificate inspection accepts sensitive file input, needing a secure browser handoff."
   },
@@ -84,28 +76,16 @@
     "reason": "Tax evidence export returns a file and requires a protected binary transport."
   },
   {
-    "route": "api.nfse.invoices.fiscal-decision.store",
-    "reason": "Operator fiscal classification writes require a typed reason/evidence schema, state checks, and independent per-operation approval."
+    "route": "api.nfse.invoices.emails.store",
+    "reason": "Email sending can trigger fiscal issuance via DocumentSending; MCP needs explicit recipient validation, first-POST protection and one-use fiscal approval before exposing this command."
+  },
+  {
+    "route": "api.nfse.municipal-parameters.index",
+    "reason": "The official municipal parameter GET can persist advisory snapshots; it is not side-effect-free until the query/cache contract is separated and reviewed."
   },
   {
     "route": "api.nfse.receipts.artifacts.download",
     "reason": "Signed fiscal artifacts require protected authenticated binary download handling."
-  },
-  {
-    "route": "api.nfse.settings.artifacts.update",
-    "reason": "WebDAV destination and credentials require secured field handling and approval."
-  },
-  {
-    "route": "api.nfse.settings.category-issuance.store",
-    "reason": "Category fiscal policy writes change prospective issuance behavior; require typed inputs, tenant and category checks, and explicit one-use approval."
-  },
-  {
-    "route": "api.nfse.settings.company-profiles.cleanup",
-    "reason": "Fiscal profile cleanup is destructive and requires state-aware approval."
-  },
-  {
-    "route": "api.nfse.settings.company-profiles.destroy",
-    "reason": "Fiscal profile deletion is destructive and requires state-aware approval."
   },
   {
     "route": "api.nfse.settings.company-profiles.store",

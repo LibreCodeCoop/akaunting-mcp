@@ -25,6 +25,12 @@ class Api
         return $this->config->issuer;
     }
 
+    /** Public application origin only, never an OAuth issuer or API credential. */
+    public function applicationBaseUrl(): string
+    {
+        return $this->config->akauntingUrl;
+    }
+
     public function routeCatalog(): RouteCatalog
     {
         return $this->catalog ??= new RouteCatalog();

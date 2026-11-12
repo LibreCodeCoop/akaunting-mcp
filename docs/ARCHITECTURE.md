@@ -72,3 +72,92 @@ database or queue network is attached.
 Advertise only MCP protocol revisions covered by interoperability tests.
 Before adding a new protocol version, verify per-request metadata, HTTP
 headers, OAuth discovery and client compatibility in the synthetic HTTP suite.
+
+## NFS-e API parity and reviewed MCP boundaries
+
+The NFS-e module's #497 parity effort adds native JSON read contracts for
+fiscal dashboard data, company email footer, company-owned customer email
+preferences, IBGE UFs/municipalities and LC 116 catalog lookup. The MCP
+allows these **only** through the typed, ACL-preserving NfseReadCatalog, with
+bounded queries and validated URI parameters. A municipality UF must be an
+uppercase two-letter state code; arbitrary path strings are rejected.
+
+The native municipal-parameter GET may write advisory cache records; it is
+**not** whitelisted as a side-effect-free MCP read. Separately reviewed
+mutations are now available only after individual approval:
+
+- `PATCH settings/email-footer` with exact, HTTPS-only typed values.
+- `PATCH settings/artifacts` for **non-secret** WebDAV storage policies
+  (safe naming templates, company/dedicated CNPJ-scoped roots, XML/PDF flags).
+  The module's read contract includes `path_scope`, which the MCP validates
+  explicitly. Credentials, endpoint URL, username and password cannot be
+  proposed via this route. Updating an existing endpoint may perform the
+  module's bounded WebDAV connection probe; it is never a read-only MCP call.
+  Initial endpoint/credential setup still requires a secure human flow.
+- `POST invoices/{invoice}/email-preferences` with customer-owned invoice
+  verification and bounded subject and message fields.
+- `POST invoices/refresh-all` with an explicit `confirmed=true` body and
+  a current ledger snapshot, without initiating fiscal issuance.
+- `POST invoices/{invoice}/fiscal-decision` with constrained decision/reason,
+  documented justification, evidence when required, current fiscal attempts
+  and verified invoice ownership. A new "issue" decision requires an
+  authorized category; recording the decision does not itself emit an NFS-e.
+- `POST settings/category-issuance` with a current-company category,
+  a prospective `issue` or `do_not_issue` policy and justification.
+  Changing an income category's authorization is a consequential action,
+  not a mere reporting preference.
+- `POST adn/documents/{document}/ignore` for a pending, company-owned
+  received/intermediated document, never an already imported bill.
+- `POST adn/documents/{document}/import` with explicit approval,
+  company-owned existing vendor, expense category, enabled item and dates.
+  It creates **only a draft bill** through the module's existing idempotent
+  import transaction. Vendor creation is a separate protected operation.
+  The MCP refuses vendor auto-creation, arbitrary financial status and
+  payment fields.
+
+- `POST adn/distribution/consult` runs one approved, bounded national
+  distribution request using the existing company's certificate context and
+  NSU. The MCP returns only the cursor and reconciliation counts; national
+  XML and raw upstream documents are never sent as model-visible output.
+- `POST municipal-parameters/consult` runs one approved official consultation
+  and optional local advisory cache update, only for the selected company's
+  municipality, service and competence. The MCP exposes provenance and stale
+  status, not a legal conclusion about fiscal eligibility.
+- `POST settings/company-profiles/{companyId}/cleanup` and
+  `DELETE settings/company-profiles/{companyId}` require exact existing
+  company profile state, recorded cleanup status and a fresh single-use
+  approval. Delete requires `EXCLUIR` and must not reuse `CANCELAR`.
+
+All of these proposals are one-use and compare the current reviewed
+snapshot immediately before submission. They do not become read-only calls
+or bypass company and Core permissions. External operational consultations
+may have already reached the national service if a response is ambiguous;
+never automatically retry such calls.
+Direct invoice **email sending** remains blocked from the MCP mutation
+catalog: it can trigger `DocumentSending` and thus the fiscal emission
+lifecycle, and needs a distinct, reviewed confirmation/side-effect contract.
+
+## Native secure browser handoffs
+
+Sensitive or binary functions remain available through the **native authenticated
+Akaunting UI**, not a JSON tunnel through the language model. The read-only
+`akaunting_nfse_secure_handoff` tool verifies personal company membership
+and the relevant native read resource before producing a fixed allowlisted URL:
+PFX inspection and profile creation, Vault credential entry, closing CSV,
+IBS/CBS evidence CSV, the current receipt's authorized XML/DANFSe, and
+**email composition** for a company-owned invoice. The send action stays
+in the native interface: `DocumentSending` may initiate NFS-e issuance,
+so MCP cannot execute it as an unbounded JSON mutation.
+The selected native page still enforces its own session, CSRF and ACL.
+A handoff **does not perform or approve an API mutation**, transfer private
+bytes, or confer access solely because a link was generated.
+
+These seven browser handoffs remain **distinct from direct MCP route parity**
+in the audit until their security-specific transports and approvals are implemented.
+Do not count browser navigation as a successful JSON endpoint execution.
+
+Deploying a new NFS-e module version is a prerequisite for consuming these
+new endpoints; a reviewed catalog entry never establishes that a route is
+installed or that the connected identity is authorized. No generic
+path proxy, wildcard route discovery, or automatic write permission is
+introduced.
