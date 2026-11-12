@@ -244,6 +244,11 @@ final class ApprovalService
                 $creds['email'],$creds['password'],$plan['method'],
                 $plan['path'],(int)$entry['company_id'],$plan['body'],$plan['record_type']
             );
+            // Post-contact response parsing is strict and bounded. Any
+            // unexpected shape leaves outcome unconfirmed, never retried.
+            $summary=(new NfseWriteCatalog())->consultationSummary(
+                $plan['route'],$response,(int)$plan['company_id'],
+            );
             $this->store->state(static function (array &$state) use ($key,$response): void {
                 $state['approvals'][$key]['status']='completed';
                 $state['approvals'][$key]['http_status']=$response['http_status'];
@@ -253,6 +258,7 @@ final class ApprovalService
                 'status'=>'completed','http_status'=>$response['http_status'],
                 'company_id'=>$entry['company_id'],'route'=>$plan['route'],
                 'message'=>'Akaunting accepted the approved operation. Review the record through a read tool.',
+                ...($summary===null?[]:['consultation_summary'=>$summary]),
             ];
         } catch (\Throwable $error) {
             $this->store->state(static function (array &$state) use ($key): void {
@@ -333,6 +339,11 @@ final class ApprovalService
                 $creds['email'],$creds['password'],$plan['method'],$plan['path'],
                 $company,$plan['body'],$plan['record_type']
             );
+            // Post-contact response parsing is strict and bounded. Any
+            // unexpected shape leaves outcome unconfirmed, never retried.
+            $summary=(new NfseWriteCatalog())->consultationSummary(
+                $plan['route'],$response,(int)$plan['company_id'],
+            );
             $this->store->state(static function (array &$state) use ($key,$response): void {
                 $state['approvals'][$key]['status']='completed';
                 $state['approvals'][$key]['http_status']=$response['http_status'];
@@ -342,6 +353,7 @@ final class ApprovalService
                 'status'=>'completed','http_status'=>$response['http_status'],
                 'company_id'=>$company,'route'=>$plan['route'],
                 'message'=>'The host-confirmed change was accepted. Read back the record to verify the result.',
+                ...($summary===null?[]:['consultation_summary'=>$summary]),
             ];
         } catch (\Throwable $error) {
             // A timeout may occur AFTER the upstream write. Never retry blindly.

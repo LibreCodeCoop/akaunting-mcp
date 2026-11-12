@@ -115,9 +115,24 @@ mutations are now available only after individual approval:
   The MCP refuses vendor auto-creation, arbitrary financial status and
   payment fields.
 
+- `POST adn/distribution/consult` runs one approved, bounded national
+  distribution request using the existing company's certificate context and
+  NSU. The MCP returns only the cursor and reconciliation counts; national
+  XML and raw upstream documents are never sent as model-visible output.
+- `POST municipal-parameters/consult` runs one approved official consultation
+  and optional local advisory cache update, only for the selected company's
+  municipality, service and competence. The MCP exposes provenance and stale
+  status, not a legal conclusion about fiscal eligibility.
+- `POST settings/company-profiles/{companyId}/cleanup` and
+  `DELETE settings/company-profiles/{companyId}` require exact existing
+  company profile state, recorded cleanup status and a fresh single-use
+  approval. Delete requires `EXCLUIR` and must not reuse `CANCELAR`.
+
 All of these proposals are one-use and compare the current reviewed
 snapshot immediately before submission. They do not become read-only calls
-or bypass company and Core permissions.
+or bypass company and Core permissions. External operational consultations
+may have already reached the national service if a response is ambiguous;
+never automatically retry such calls.
 Direct invoice **email sending** remains blocked from the MCP mutation
 catalog: it can trigger `DocumentSending` and thus the fiscal emission
 lifecycle, and needs a distinct, reviewed confirmation/side-effect contract.

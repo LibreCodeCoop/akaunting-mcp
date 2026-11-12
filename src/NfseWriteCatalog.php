@@ -85,6 +85,14 @@ final class NfseWriteCatalog
             'method'=>'POST','path'=>'/nfse/adn/documents/{document}/import',
             'permission'=>'create-purchases-bills',
         ],
+        'api.nfse.adn.distribution.consult' => [
+            'method'=>'POST','path'=>'/nfse/adn/distribution/consult',
+            'permission'=>'read-nfse-settings',
+        ],
+        'api.nfse.municipal-parameters.consult' => [
+            'method'=>'POST','path'=>'/nfse/municipal-parameters/consult',
+            'permission'=>'read-nfse-settings',
+        ],
         'api.nfse.invoices.fiscal-event-evidence.store' => [
             'method'=>'POST', 'path'=>'/nfse/invoices/{invoice}/fiscal-event-evidence',
             'permission'=>'update-sales-invoices',
@@ -342,6 +350,30 @@ final class NfseWriteCatalog
             }
             return;
         }
+        if ($name==='api.nfse.adn.distribution.consult') {
+            // Remote national distribution may consume a cursor and return
+            // signed fiscal documents. The operator confirms one bounded call.
+            // Omit cnpj: the module derives it from the selected company's PFX.
+            $this->only($body,['nsu','lote','confirmed']);
+            if (!is_int($body['nsu']??null) || $body['nsu']<0
+                || $body['nsu']>2147483647 || !is_bool($body['lote']??null)
+                || ($body['confirmed']??null)!==true) {
+                throw new RuntimeException('National ADN consultation requires bounded approved cursor');
+            }
+            return;
+        }
+        if ($name==='api.nfse.municipal-parameters.consult') {
+            $this->only($body,['municipio_ibge','service_code','competence','confirmed']);
+            if (!is_string($body['municipio_ibge']??null)
+                || preg_match('/^[0-9]{7}$/D',$body['municipio_ibge'])!==1
+                || !is_string($body['service_code']??null)
+                || preg_match('/^[0-9]{9}$/D',$body['service_code'])!==1
+                || !$this->validDate($body['competence']??null)
+                || ($body['confirmed']??null)!==true) {
+                throw new RuntimeException('Municipal advisory consultation needs precise approved context');
+            }
+            return;
+        }
         if ($name==='api.nfse.adn.documents.import') {
             // Creating a vendor is a separate permission and approval workflow.
             // This route is restricted to previously reviewed company vendors.
@@ -591,6 +623,26 @@ final class NfseWriteCatalog
             }
             $snapshot['profile']=$profile;
         }
+        if ($route==='api.nfse.municipal-parameters.consult') {
+            $municipality=$profile['fiscal_parameters']['municipio_ibge']??null;
+            if (!is_string($municipality) || $municipality!==$body['municipio_ibge']) {
+                throw new RuntimeException('Municipal advisory context differs from selected company');
+            }
+            $snapshot['municipal_consultation']=[
+                'municipio_ibge'=>$municipality,
+                'service_code'=>$body['service_code'],
+                'competence'=>$body['competence'],
+                'environment'=>$profile['fiscal_parameters']['sandbox_mode']??null,
+            ];
+        } elseif ($route==='api.nfse.adn.distribution.consult') {
+            // Certificate metadata is intentionally redacted from the MCP.
+            // The module independently selects the company-bound certificate.
+            $snapshot['adn_consultation']=[
+                'nsu'=>$body['nsu'],'lote'=>$body['lote'],
+                'profile_revision'=>$profile['version']??null,
+                'environment'=>$profile['fiscal_parameters']['sandbox_mode']??null,
+            ];
+        }
         if (in_array($route,[
             'api.nfse.settings.company-profiles.cleanup',
             'api.nfse.settings.company-profiles.destroy',
@@ -779,6 +831,12 @@ final class NfseWriteCatalog
                 }
                 $snapshot['adn_mapping']=$mapping;
             }
+        } elseif (in_array($route,[
+            'api.nfse.adn.distribution.consult',
+            'api.nfse.municipal-parameters.consult',
+        ],true)) {
+            // The selected active profile and exact approved query are
+            // already frozen above. Never call the national service here.
         } elseif ($route==='api.nfse.dps.advance') {
             $readiness=$reader->read($creds,$company,[
                 'route'=>'api.nfse.dps.readiness',
@@ -1023,6 +1081,72 @@ final class NfseWriteCatalog
     {
         return is_string($value) && strlen($value)>0 && strlen($value)<=191
             && preg_match('/^[a-zA-Z0-9:_|.\-]+$/D',$value)===1;
+    }
+
+    /**
+     * Approved remote consultations return only bounded operational evidence
+     * in the tool result, not raw national XML or full municipal payloads.
+     * @param array<string,mixed> $response
+     * @return array<string,mixed>|null
+     */
+    public function consultationSummary(string $route, array $response, int $company): ?array
+    {
+        if (!in_array($route,[
+            'api.nfse.adn.distribution.consult',
+            'api.nfse.municipal-parameters.consult',
+        ],true)) {
+            return null;
+        }
+        $outer=$response['data']??null;
+        $payload=is_array($outer)?($outer['data']??null):null;
+        if (!is_array($payload)) {
+            throw new RuntimeException('Approved national consultation has no typed response');
+        }
+        if ($route==='api.nfse.adn.distribution.consult') {
+            $documents=$payload['documents']??null;
+            $reconciliation=$payload['reconciliation']??null;
+            $cursor=$payload['ultimo_nsu']??null;
+            if (!is_array($documents) || !array_is_list($documents)
+                || count($documents)>100
+                || !is_array($reconciliation)
+                || !is_int($reconciliation['matched']??null)
+                || !is_int($reconciliation['unmatched']??null)
+                || !(is_string($cursor)||is_int($cursor))
+                || preg_match('/^[0-9]{1,15}$/D',(string)$cursor)!==1) {
+                throw new RuntimeException('Unsafe national ADN consultation response');
+            }
+            foreach ($documents as $document) {
+                if (!is_array($document) || array_key_exists('xml',$document)) {
+                    throw new RuntimeException('ADN consultation must never release raw XML via MCP');
+                }
+            }
+            return [
+                'ultimo_nsu'=>(string)$cursor,
+                'documents'=>count($documents),
+                'matched'=>$reconciliation['matched'],
+                'unmatched'=>$reconciliation['unmatched'],
+                'xml_exposed'=>false,
+            ];
+        }
+        $meta=$outer['meta']??null;
+        if (!is_array($meta)
+            || !in_array($meta['source']??null,['live','cache'],true)
+            || !is_bool($meta['stale']??null)
+            || ($meta['company_id']??null)!==$company
+            || !is_string($meta['municipio_ibge']??null)
+            || !is_string($meta['service_code']??null)
+            || !is_string($meta['competence']??null)) {
+            throw new RuntimeException('Unsafe municipal advisory response');
+        }
+        return [
+            'source'=>$meta['source'],
+            'stale'=>$meta['stale'],
+            'company_id'=>$meta['company_id'],
+            'municipio_ibge'=>$meta['municipio_ibge'],
+            'service_code'=>$meta['service_code'],
+            'competence'=>$meta['competence'],
+            'advisory_only'=>true,
+        ];
     }
 
     private function validDate(mixed $value): bool

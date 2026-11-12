@@ -105,7 +105,9 @@ final class NfseWriteBehaviorTest extends TestCase
                         'fiscal_parameters'=>[
                             'sandbox_mode'=>$this->sandbox?'1':'0',
                             'dps_series'=>'00001',
+                            'municipio_ibge'=>'3304557',
                         ],
+                        'certificate_cnpj'=>'12345678000199',
                         'version'=>$this->profileVersion,
                         'cleanup_pending'=>$this->profileCleanupPending,
                     ]], 'eligible_companies'=>[]];
@@ -254,6 +256,24 @@ final class NfseWriteBehaviorTest extends TestCase
             ): array {
                 ++$this->writes;
                 $this->lastWrite=compact('method','path','companyId','body','recordType');
+                if ($path==='/nfse/adn/distribution/consult') {
+                    return ['http_status'=>200,'data'=>['data'=>[
+                        'ultimo_nsu'=>'42',
+                        'documents'=>[['nsu'=>'42','signature_integrity'=>'valid']],
+                        'reconciliation'=>['matched'=>1,'unmatched'=>0],
+                    ]]];
+                }
+                if ($path==='/nfse/municipal-parameters/consult') {
+                    return ['http_status'=>200,'data'=>[
+                        'data'=>['aliquota'=>['value'=>'2.00']],
+                        'meta'=>[
+                            'source'=>'live','stale'=>false,'company_id'=>1,
+                            'municipio_ibge'=>'3304557',
+                            'service_code'=>'010701000',
+                            'competence'=>'2026-11-12',
+                        ],
+                    ]];
+                }
                 return ['http_status'=>$method==='DELETE'?204:200];
             }
         };
@@ -339,6 +359,97 @@ final class NfseWriteBehaviorTest extends TestCase
             } catch (RuntimeException) {
                 self::assertSame(3,$this->client->writes);
             }
+        }
+    }
+
+    public function testNationalAdnConsultationNeedsOneUseApprovalAndRedactsFiscalXml(): void
+    {
+        $route='api.nfse.adn.distribution.consult';
+        $body=['nsu'=>41,'lote'=>true,'confirmed'=>true];
+        $plan=$this->prepare($route,'POST',[],$body);
+        self::assertSame(0,$this->client->writes);
+        $result=$this->approve($plan);
+        self::assertSame('completed',$result['status']);
+        self::assertSame('42',$result['consultation_summary']['ultimo_nsu']);
+        self::assertSame(1,$result['consultation_summary']['documents']);
+        self::assertFalse($result['consultation_summary']['xml_exposed']);
+        self::assertSame('/nfse/adn/distribution/consult',$this->client->lastWrite['path']);
+        self::assertSame($body,$this->client->lastWrite['body']);
+
+        foreach ([
+            [...$body,'confirmed'=>false],
+            [...$body,'cnpj'=>'12345678000199'],
+            [...$body,'nsu'=>-1],
+            [...$body,'nsu'=>'41'],
+            [...$body,'lote'=>'1'],
+            [...$body,'access_key'=>'fake'],
+        ] as $bad) {
+            try {
+                $this->prepare($route,'POST',[],$bad);
+                self::fail('Unapproved national ADN consultation accepted');
+            } catch (RuntimeException) {
+                self::assertSame(1,$this->client->writes);
+            }
+        }
+        $plan=$this->prepare($route,'POST',[],$body);
+        $this->client->profileVersion=2;
+        try {
+            $this->approve($plan);
+            self::fail('Changed fiscal company certificate was not rechecked');
+        } catch (RuntimeException) {
+            self::assertSame(1,$this->client->writes);
+        }
+        $catalog=new NfseWriteCatalog();
+        try {
+            $catalog->consultationSummary($route,[
+                'data'=>['data'=>[
+                    'ultimo_nsu'=>'42','documents'=>[['xml'=>'<NFSe>SECRET</NFSe>']],
+                    'reconciliation'=>['matched'=>0,'unmatched'=>1],
+                ]],
+            ],1);
+            self::fail('Raw XML document escaped approved result projection');
+        } catch (RuntimeException) {
+            self::assertSame(1,$this->client->writes);
+        }
+    }
+
+    public function testMunicipalParameterConsultationRequiresSelectedCompanyContext(): void
+    {
+        $route='api.nfse.municipal-parameters.consult';
+        $body=[
+            'municipio_ibge'=>'3304557','service_code'=>'010701000',
+            'competence'=>'2026-11-12','confirmed'=>true,
+        ];
+        $plan=$this->prepare($route,'POST',[],$body);
+        self::assertSame(0,$this->client->writes);
+        $result=$this->approve($plan);
+        self::assertSame('completed',$result['status']);
+        self::assertSame('live',$result['consultation_summary']['source']);
+        self::assertFalse($result['consultation_summary']['stale']);
+        self::assertTrue($result['consultation_summary']['advisory_only']);
+        self::assertArrayNotHasKey('aliquota',$result['consultation_summary']);
+
+        foreach ([
+            [...$body,'municipio_ibge'=>'3303302'],
+            [...$body,'service_code'=>'invalid'],
+            [...$body,'competence'=>'2026-02-30'],
+            [...$body,'confirmed'=>false],
+            [...$body,'environment'=>'production'],
+        ] as $bad) {
+            try {
+                $this->prepare($route,'POST',[],$bad);
+                self::fail('Untrusted municipal advisory context was approved');
+            } catch (RuntimeException) {
+                self::assertSame(1,$this->client->writes);
+            }
+        }
+        $plan=$this->prepare($route,'POST',[],$body);
+        $this->client->profileVersion=2;
+        try {
+            $this->approve($plan);
+            self::fail('Stale fiscal profile was accepted for municipal advisory');
+        } catch (RuntimeException) {
+            self::assertSame(1,$this->client->writes);
         }
     }
 
