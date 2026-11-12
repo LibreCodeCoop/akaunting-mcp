@@ -83,12 +83,19 @@ bounded queries and validated URI parameters. A municipality UF must be an
 uppercase two-letter state code; arbitrary path strings are rejected.
 
 The native municipal-parameter GET may write advisory cache records; it is
-**not** whitelisted as a side-effect-free MCP read. Fiscal status refresh,
-invoice email sending, footer editing and customer-template editing are
-mutations and **not** made available by adding a read route. They require
-a separate typed mutation contract, explicit individual human confirmation
-and regression tests for company isolation and fiscal side effects before
-their MCP exposure can be enabled.
+**not** whitelisted as a side-effect-free MCP read. Separately reviewed
+mutations are now available only after individual approval:
+
+- `PATCH settings/email-footer` with exact, HTTPS-only typed values.
+- `POST invoices/{invoice}/email-preferences` with customer-owned invoice
+  verification and bounded subject and message fields.
+- `POST invoices/refresh-all` with an explicit `confirmed=true` body and
+  a current ledger snapshot, without initiating fiscal issuance.
+
+These do not become read-only calls or bypass company and Core permissions.
+Direct invoice **email sending** remains blocked from the MCP mutation
+catalog: it can trigger `DocumentSending` and thus the fiscal emission
+lifecycle, and needs a distinct, reviewed confirmation/side-effect contract.
 
 Deploying a new NFS-e module version is a prerequisite for consuming these
 new endpoints; a reviewed catalog entry never establishes that a route is

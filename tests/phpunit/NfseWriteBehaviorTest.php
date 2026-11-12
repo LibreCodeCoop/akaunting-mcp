@@ -75,6 +75,17 @@ final class NfseWriteBehaviorTest extends TestCase
                         'version'=>$this->profileVersion,
                     ]], 'eligible_companies'=>[]];
                 }
+                if ($path==='/nfse/settings/email-footer') {
+                    return ['data'=>[
+                        'footer_message'=>'Initial synthetic company footer',
+                        'footer_url'=>'https://footer.example.test/previous',
+                    ]];
+                }
+                if ($path==='/nfse/invoices/7/email-preferences') {
+                    return ['data'=>[
+                        'configured'=>false,'subject'=>'','body'=>'',
+                    ]];
+                }
                 if ($path==='/nfse/settings/tax-associations') {
                     return ['data'=>['taxes'=>[[
                         'id'=>3,'name'=>'Synthetic ISS','type'=>'inclusive','rate'=>'2',
@@ -87,7 +98,7 @@ final class NfseWriteBehaviorTest extends TestCase
                 if ($path==='/documents/7' || $path==='/documents/8') {
                     return ['data'=>[
                         'id'=>(int)basename($path),
-                        'company_id'=>$this->invoiceCompany,'type'=>'invoice',
+                        'company_id'=>$this->invoiceCompany,'type'=>'invoice','contact_id'=>12,
                     ]];
                 }
                 if ($path==='/nfse/invoices/7/post-emission-status') {
@@ -179,6 +190,57 @@ final class NfseWriteBehaviorTest extends TestCase
             $view['request_id'],$view['csrf'],$view['cookie'],
             'approve','member@example.invalid','correct-password',$phrase,
         );
+    }
+
+    public function testAuxiliaryNfseMutationsAreTypedAndRequireHumanApproval(): void
+    {
+        $footer=[
+            'footer_message'=>'Synthetic company footer',
+            'footer_url'=>'https://footer.example.test/current',
+        ];
+        $proposal=$this->prepare('api.nfse.settings.email-footer.update','PATCH',[],$footer);
+        self::assertSame(0,$this->client->writes);
+        self::assertSame('completed',$this->approve($proposal)['status']);
+        self::assertSame('/nfse/settings/email-footer',$this->client->lastWrite['path']);
+        self::assertSame('PATCH',$this->client->lastWrite['method']);
+
+        $template=['subject'=>'Synthetic email subject','body'=>'<p>Synthetic email text</p>'];
+        $proposal=$this->prepare('api.nfse.invoices.email-preferences.store','POST',
+            ['invoice'=>7],$template);
+        self::assertSame(1,$this->client->writes);
+        self::assertSame('completed',$this->approve($proposal)['status']);
+        self::assertSame('/nfse/invoices/7/email-preferences',$this->client->lastWrite['path']);
+
+        $proposal=$this->prepare('api.nfse.invoices.refresh-all','POST',
+            [],['confirmed'=>true]);
+        self::assertSame(2,$this->client->writes);
+        self::assertSame('completed',$this->approve($proposal)['status']);
+        self::assertSame('/nfse/invoices/refresh-all',$this->client->lastWrite['path']);
+        self::assertSame(3,$this->client->writes);
+
+        foreach ([
+            ['api.nfse.settings.email-footer.update','PATCH',[],[
+                'footer_message'=>'Synthetic','footer_url'=>'https://user:pass@footer.example.test',
+            ]],
+            ['api.nfse.settings.email-footer.update','PATCH',[],[
+                'footer_message'=>'Synthetic','footer_url'=>'http://insecure.example.test',
+            ]],
+            ['api.nfse.invoices.email-preferences.store','POST',['invoice'=>7],[
+                'subject'=>'','body'=>'<p>Empty subject</p>',
+            ]],
+            ['api.nfse.invoices.email-preferences.store','POST',['invoice'=>7],[
+                'subject'=>'Synthetic','body'=>'<p>Hello</p>','company_id'=>2,
+            ]],
+            ['api.nfse.invoices.refresh-all','POST',[],['confirmed'=>false]],
+            ['api.nfse.invoices.refresh-all','POST',[],['confirmed'=>true,'force_emit'=>true]],
+        ] as [$route,$method,$params,$body]) {
+            try {
+                $this->prepare($route,$method,$params,$body);
+                self::fail('Unsafe auxiliary NFS-e mutation was prepared');
+            } catch (RuntimeException) {
+                self::assertSame(3,$this->client->writes);
+            }
+        }
     }
 
     public function testDpsAdvanceRequiresApprovedExactCounterAndReason(): void

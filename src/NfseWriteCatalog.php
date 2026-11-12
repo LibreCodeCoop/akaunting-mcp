@@ -42,6 +42,19 @@ final class NfseWriteCatalog
             'method'=>'POST', 'path'=>'/nfse/settings/approximate-taxes',
             'permission'=>'update-nfse-settings',
         ],
+        // Reviewed auxiliary updates introduced by NFS-e #497.
+        'api.nfse.settings.email-footer.update' => [
+            'method'=>'PATCH', 'path'=>'/nfse/settings/email-footer',
+            'permission'=>'update-nfse-settings',
+        ],
+        'api.nfse.invoices.email-preferences.store' => [
+            'method'=>'POST', 'path'=>'/nfse/invoices/{invoice}/email-preferences',
+            'permission'=>'update-sales-invoices',
+        ],
+        'api.nfse.invoices.refresh-all' => [
+            'method'=>'POST', 'path'=>'/nfse/invoices/refresh-all',
+            'permission'=>'update-sales-invoices',
+        ],
         'api.nfse.invoices.fiscal-event-evidence.store' => [
             'method'=>'POST', 'path'=>'/nfse/invoices/{invoice}/fiscal-event-evidence',
             'permission'=>'update-sales-invoices',
@@ -103,7 +116,8 @@ final class NfseWriteCatalog
                     ? 'production_restricted_only'
                     : ($fiscalCommand
                         ? 'production_and_restricted'
-                        : (in_array($name,['api.nfse.dps.advance','api.nfse.invoices.refresh'],true)
+                        : (in_array($name,['api.nfse.dps.advance','api.nfse.invoices.refresh',
+                            'api.nfse.invoices.refresh-all'],true)
                             ? 'company_scoped_operational_reconciliation'
                             : 'company_scoped_configuration')),
             ];
@@ -157,6 +171,40 @@ final class NfseWriteCatalog
         if (!isset(self::ROUTES[$name]) || $body===[] || array_is_list($body)
             || array_key_exists('company_id',$body)) {
             throw new RuntimeException('Invalid NFS-e mutation body');
+        }
+        if ($name==='api.nfse.settings.email-footer.update') {
+            $this->only($body,['footer_message','footer_url']);
+            $message=$body['footer_message']??null;
+            $url=$body['footer_url']??null;
+            if (!is_string($message) || mb_strlen(trim($message))<1 || mb_strlen($message)>400
+                || preg_match('/[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F\\x7F]/',$message)===1
+                || !is_string($url) || strlen($url)>512
+                || filter_var($url,FILTER_VALIDATE_URL)===false
+                || parse_url($url,PHP_URL_SCHEME)!=='https'
+                || parse_url($url,PHP_URL_USER)!==null
+                || parse_url($url,PHP_URL_PASS)!==null
+                || preg_match('/[\\x00-\\x20\\x7F]/',$url)===1) {
+                throw new RuntimeException('Invalid fiscal email footer update');
+            }
+            return;
+        }
+        if ($name==='api.nfse.invoices.email-preferences.store') {
+            $this->only($body,['subject','body']);
+            $subject=$body['subject']??null;
+            $content=$body['body']??null;
+            if (!is_string($subject) || mb_strlen(trim($subject))===0 || mb_strlen($subject)>255
+                || !is_string($content) || mb_strlen(trim($content))===0 || mb_strlen($content)>12000
+                || preg_match('/[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F\\x7F]/',$subject.$content)===1) {
+                throw new RuntimeException('Invalid company email template');
+            }
+            return;
+        }
+        if ($name==='api.nfse.invoices.refresh-all') {
+            $this->only($body,['confirmed']);
+            if (($body['confirmed']??null)!==true) {
+                throw new RuntimeException('Explicit approval of fiscal status refresh required');
+            }
+            return;
         }
         if ($name==='api.nfse.dps.advance') {
             $this->only($body,[
@@ -370,7 +418,37 @@ final class NfseWriteCatalog
             throw new RuntimeException('Active fiscal profile required');
         }
         $snapshot=['profile'=>$profile];
-        if ($route==='api.nfse.dps.advance') {
+        if ($route==='api.nfse.settings.email-footer.update') {
+            $snapshot['email_footer']=$reader->read($creds,$company,[
+                'route'=>'api.nfse.settings.email-footer.show',
+            ])['response'];
+        } elseif ($route==='api.nfse.invoices.email-preferences.store') {
+            $invoiceId=$params['invoice']??null;
+            if (!is_int($invoiceId)) throw new RuntimeException('Invoice ID required');
+            $invoice=$api->get($creds['email'],$creds['password'],
+                '/documents/'.$invoiceId,[
+                    'company_id'=>$company,'search'=>'type:invoice',
+                ])['data']??null;
+            if (!is_array($invoice) || array_is_list($invoice)
+                || ($invoice['id']??null)!==$invoiceId
+                || (int)($invoice['company_id']??0)!==$company
+                || ($invoice['type']??null)!=='invoice'
+                || !is_int($invoice['contact_id']??null)
+                || $invoice['contact_id']<=0) {
+                throw new RuntimeException('Invoice or customer does not belong to selected company');
+            }
+            ReadResponseGuard::assertNestedCompany($invoice,$company);
+            $snapshot['invoice']=$invoice;
+            $snapshot['email_preferences']=$reader->read($creds,$company,[
+                'route'=>'api.nfse.invoices.email-preferences.show',
+                'route_params'=>['invoice'=>$invoiceId],
+            ])['response'];
+        } elseif ($route==='api.nfse.invoices.refresh-all') {
+            $snapshot['ledger']=$reader->read($creds,$company,[
+                'route'=>'api.nfse.ledger.index',
+                'nfse_filters'=>['page'=>1,'limit'=>50],
+            ])['response'];
+        } elseif ($route==='api.nfse.dps.advance') {
             $readiness=$reader->read($creds,$company,[
                 'route'=>'api.nfse.dps.readiness',
             ])['response']['data']??null;
