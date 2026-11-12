@@ -72,3 +72,26 @@ database or queue network is attached.
 Advertise only MCP protocol revisions covered by interoperability tests.
 Before adding a new protocol version, verify per-request metadata, HTTP
 headers, OAuth discovery and client compatibility in the synthetic HTTP suite.
+
+## NFS-e API parity and reviewed MCP boundaries
+
+The NFS-e module's #497 parity effort adds native JSON read contracts for
+fiscal dashboard data, company email footer, company-owned customer email
+preferences, IBGE UFs/municipalities and LC 116 catalog lookup. The MCP
+allows these **only** through the typed, ACL-preserving NfseReadCatalog, with
+bounded queries and validated URI parameters. A municipality UF must be an
+uppercase two-letter state code; arbitrary path strings are rejected.
+
+The native municipal-parameter GET may write advisory cache records; it is
+**not** whitelisted as a side-effect-free MCP read. Fiscal status refresh,
+invoice email sending, footer editing and customer-template editing are
+mutations and **not** made available by adding a read route. They require
+a separate typed mutation contract, explicit individual human confirmation
+and regression tests for company isolation and fiscal side effects before
+their MCP exposure can be enabled.
+
+Deploying a new NFS-e module version is a prerequisite for consuming these
+new endpoints; a reviewed catalog entry never establishes that a route is
+installed or that the connected identity is authorized. No generic
+path proxy, wildcard route discovery, or automatic write permission is
+introduced.

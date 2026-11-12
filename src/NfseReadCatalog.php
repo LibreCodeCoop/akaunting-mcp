@@ -85,6 +85,27 @@ final class NfseReadCatalog
         'api.nfse.settings.vault.show' => [
             'path'=>'/nfse/settings/vault', 'permission'=>'read-nfse-settings','filters'=>[],
         ],
+        // #497: additional reviewed native resources; data is owned by Akaunting.
+        'api.nfse.dashboard.index' => [
+            'path'=>'/nfse/dashboard', 'permission'=>'read-sales-invoices', 'filters'=>[],
+        ],
+        'api.nfse.settings.email-footer.show' => [
+            'path'=>'/nfse/settings/email-footer', 'permission'=>'read-nfse-settings', 'filters'=>[],
+        ],
+        'api.nfse.invoices.email-preferences.show' => [
+            'path'=>'/nfse/invoices/{invoice}/email-preferences',
+            'permission'=>'read-sales-invoices', 'filters'=>[],
+        ],
+        'api.nfse.ibge.ufs' => [
+            'path'=>'/nfse/ibge/ufs', 'permission'=>'read-nfse-settings', 'filters'=>[],
+        ],
+        'api.nfse.ibge.municipalities' => [
+            'path'=>'/nfse/ibge/municipalities/{uf}', 'permission'=>'read-nfse-settings', 'filters'=>[],
+        ],
+        'api.nfse.lc116.services' => [
+            'path'=>'/nfse/lc116/services', 'permission'=>'read-nfse-settings', 'filters'=>['q','limit'],
+        ],
+        // Not registered: municipal-parameters GET writes an advisory cache.
     ];
 
     /** @return list<array<string,mixed>> */
@@ -120,7 +141,11 @@ final class NfseReadCatalog
         $path=$spec['path'];
         foreach ($expected as $key) {
             $value=$params[$key];
-            if (!is_int($value) || $value<=0 || $value>2147483647) {
+            if ($key==='uf') {
+                if (!is_string($value) || preg_match('/^[A-Z]{2}$/D',$value)!==1) {
+                    throw new RuntimeException('Invalid UF for municipal listing');
+                }
+            } elseif (!is_int($value) || $value<=0 || $value>2147483647) {
                 throw new RuntimeException('NFS-e path IDs must be positive integers');
             }
             $path=str_replace('{'.$key.'}',(string)$value,$path);
@@ -134,8 +159,12 @@ final class NfseReadCatalog
             $parts=preg_split('/(\{[a-z_]+\})/', $spec['path'],-1,PREG_SPLIT_DELIM_CAPTURE);
             $regex='';
             foreach ($parts as $part) {
-                $regex.=preg_match('/^\{[a-z_]+\}$/D',$part)
-                    ? '[1-9][0-9]{0,9}' : preg_quote($part,'~');
+                if ($part==='{uf}') {
+                    $regex.='[A-Z]{2}';
+                } else {
+                    $regex.=preg_match('/^\{[a-z_]+\}$/D',$part)
+                        ? '[1-9][0-9]{0,9}' : preg_quote($part,'~');
+                }
             }
             if (preg_match('~^'.$regex.'$~D',$path)===1) return true;
         }

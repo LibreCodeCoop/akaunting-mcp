@@ -25,6 +25,20 @@ final class NfseReadBehaviorTest extends TestCase
         self::assertArrayHasKey('api.nfse.adn.documents.preview',$routes);
         self::assertArrayHasKey('api.nfse.settings.company-profiles.index',$routes);
         self::assertArrayHasKey('api.nfse.settings.artifacts.show',$routes);
+        foreach ([
+            'api.nfse.dashboard.index',
+            'api.nfse.settings.email-footer.show',
+            'api.nfse.invoices.email-preferences.show',
+            'api.nfse.ibge.ufs',
+            'api.nfse.ibge.municipalities',
+            'api.nfse.lc116.services',
+        ] as $name) {
+            self::assertArrayHasKey($name,$routes);
+        }
+        self::assertArrayNotHasKey('api.nfse.municipal-parameters.index',$routes);
+        self::assertTrue($catalog->permitsPath('/nfse/ibge/municipalities/RJ'));
+        self::assertFalse($catalog->permitsPath('/nfse/ibge/municipalities/rj'));
+        self::assertFalse($catalog->permitsPath('/nfse/ibge/municipalities/../private'));
         self::assertSame(
             '/nfse/settings/artifacts',
             (new NfseReadCatalog())->resolve('api.nfse.settings.artifacts.show', [])['path'],
@@ -52,7 +66,15 @@ final class NfseReadBehaviorTest extends TestCase
             $catalog->query('api.nfse.closing.index',['competence'=>'2026-11']));
         self::assertSame(['number'=>'900000000000008'],
             $catalog->query('api.nfse.dps.lookup',['number'=>'900000000000008']));
+        self::assertSame('/nfse/ibge/municipalities/RJ',
+            $catalog->resolve('api.nfse.ibge.municipalities',['uf'=>'RJ'])['path']);
+        self::assertSame(['q'=>'0107','limit'=>25],
+            $catalog->query('api.nfse.lc116.services',['q'=>'0107','limit'=>25]));
         foreach ([
+            fn()=> $catalog->resolve('api.nfse.ibge.municipalities',['uf'=>'rj']),
+            fn()=> $catalog->resolve('api.nfse.ibge.municipalities',['uf'=>'../RJ']),
+            fn()=> $catalog->resolve('api.nfse.ibge.municipalities',['uf'=>33]),
+            fn()=> $catalog->query('api.nfse.lc116.services',['limit'=>200]),
             fn()=> $catalog->resolve('api.nfse.invoices.service-preview',['invoice'=>'7']),
             fn()=> $catalog->resolve('api.nfse.invoices.service-preview',['invoice'=>0]),
             fn()=> $catalog->resolve('api.nfse.invoices.service-preview',['invoice'=>7,'extra'=>1]),
