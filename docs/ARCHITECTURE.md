@@ -91,8 +91,26 @@ mutations are now available only after individual approval:
   verification and bounded subject and message fields.
 - `POST invoices/refresh-all` with an explicit `confirmed=true` body and
   a current ledger snapshot, without initiating fiscal issuance.
+- `POST invoices/{invoice}/fiscal-decision` with constrained decision/reason,
+  documented justification, evidence when required, current fiscal attempts
+  and verified invoice ownership. A new "issue" decision requires an
+  authorized category; recording the decision does not itself emit an NFS-e.
+- `POST settings/category-issuance` with a current-company category,
+  a prospective `issue` or `do_not_issue` policy and justification.
+  Changing an income category's authorization is a consequential action,
+  not a mere reporting preference.
+- `POST adn/documents/{document}/ignore` for a pending, company-owned
+  received/intermediated document, never an already imported bill.
+- `POST adn/documents/{document}/import` with explicit approval,
+  company-owned existing vendor, expense category, enabled item and dates.
+  It creates **only a draft bill** through the module's existing idempotent
+  import transaction. Vendor creation is a separate protected operation.
+  The MCP refuses vendor auto-creation, arbitrary financial status and
+  payment fields.
 
-These do not become read-only calls or bypass company and Core permissions.
+All of these proposals are one-use and compare the current reviewed
+snapshot immediately before submission. They do not become read-only calls
+or bypass company and Core permissions.
 Direct invoice **email sending** remains blocked from the MCP mutation
 catalog: it can trigger `DocumentSending` and thus the fiscal emission
 lifecycle, and needs a distinct, reviewed confirmation/side-effect contract.
