@@ -15,9 +15,8 @@ concurrency:
 
 jobs:
   nfse-contract:
-    # Temporary integration gate for companion NFS-e PR #600. Before merging
-    # this MCP PR, switch back to main after #600 has been integrated.
-    name: NFS-e route coverage against companion PR #600
+    # Audit merged NFS-e contracts, including changes after PR #600.
+    name: NFS-e route coverage against current main
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -27,9 +26,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: LibreCodeCoop/akaunting-nfse
-          # Audit the exact signed companion PR #600 revision. Replace this
-          # temporary SHA with main only after module integration.
-          ref: cb221a6d91d966b2e9226fe1d2b08ee2550827f4
+          # Run against the latest reviewed module default branch.
+          ref: main
           path: nfse-module
           persist-credentials: false
       - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # v2.40.0
