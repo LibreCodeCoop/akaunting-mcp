@@ -170,7 +170,7 @@ final class NfseReadService
             $data=$response['data'] ?? null;
             $allowed=[
                 'configured','host','username_configured','password_configured',
-                'path_template','filename_template','store_xml','store_pdf',
+                'path_template','path_scope','filename_template','store_xml','store_pdf',
             ];
             if (!is_array($data) || array_is_list($data)
                 || array_diff(array_keys($data),$allowed)!==[]
@@ -181,6 +181,7 @@ final class NfseReadService
                 || !is_bool($data['store_pdf'] ?? null)
                 || !is_string($data['path_template'] ?? null)
                 || strlen($data['path_template'])>255
+                || !in_array($data['path_scope']??null,['company','configured'],true)
                 || !is_string($data['filename_template'] ?? null)
                 || strlen($data['filename_template'])>255
                 || !(($data['host'] ?? null)===null || (

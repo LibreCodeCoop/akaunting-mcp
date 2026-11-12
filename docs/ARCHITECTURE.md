@@ -87,6 +87,13 @@ The native municipal-parameter GET may write advisory cache records; it is
 mutations are now available only after individual approval:
 
 - `PATCH settings/email-footer` with exact, HTTPS-only typed values.
+- `PATCH settings/artifacts` for **non-secret** WebDAV storage policies
+  (safe naming templates, company/dedicated CNPJ-scoped roots, XML/PDF flags).
+  The module's read contract includes `path_scope`, which the MCP validates
+  explicitly. Credentials, endpoint URL, username and password cannot be
+  proposed via this route. Updating an existing endpoint may perform the
+  module's bounded WebDAV connection probe; it is never a read-only MCP call.
+  Initial endpoint/credential setup still requires a secure human flow.
 - `POST invoices/{invoice}/email-preferences` with customer-owned invoice
   verification and bounded subject and message fields.
 - `POST invoices/refresh-all` with an explicit `confirmed=true` body and

@@ -58,6 +58,8 @@ final class NfseWriteBehaviorTest extends TestCase
             public string $groupKey='service:0107|tax:010701|mun:123|rate:5.00';
             public ?string $eventDate=null;
             public int $categoryVersion=1;
+            public bool $webDavStoreXml=true;
+            public string $webDavTemplate='nfse/{cnpj}/{year}';
             public bool $categoryCanIssue=true;
             public string $categoryMode='issue';
             public int $fiscalDecisionVersion=0;
@@ -110,6 +112,17 @@ final class NfseWriteBehaviorTest extends TestCase
                     return ['data'=>[
                         'footer_message'=>'Initial synthetic company footer',
                         'footer_url'=>'https://footer.example.test/previous',
+                    ]];
+                }
+                if ($path==='/nfse/settings/artifacts') {
+                    return ['data'=>[
+                        'configured'=>true,'host'=>'dav.example.invalid',
+                        'username_configured'=>true,'password_configured'=>true,
+                        'path_template'=>$this->webDavTemplate,
+                        'path_scope'=>'company',
+                        'filename_template'=>'{chave_acesso}',
+                        'store_xml'=>$this->webDavStoreXml,
+                        'store_pdf'=>true,
                     ]];
                 }
                 if ($path==='/nfse/invoices/7/email-preferences') {
@@ -324,6 +337,62 @@ final class NfseWriteBehaviorTest extends TestCase
             } catch (RuntimeException) {
                 self::assertSame(3,$this->client->writes);
             }
+        }
+    }
+
+    public function testArtifactSettingsUpdateOnlyAllowsNonSecretApprovedCompanyPolicy(): void
+    {
+        $route='api.nfse.settings.artifacts.update';
+        $body=['nfse'=>[
+            'webdav_store_xml'=>false,
+            'webdav_path_template'=>'nfse/{cnpj}/{year}/{month}',
+            'webdav_filename_template'=>'{chave_acesso}',
+            'webdav_path_scope'=>'company',
+        ]];
+        $plan=$this->prepare($route,'PATCH',[],$body);
+        self::assertSame(0,$this->client->writes);
+        self::assertSame('completed',$this->approve($plan)['status']);
+        self::assertSame('/nfse/settings/artifacts',$this->client->lastWrite['path']);
+        self::assertSame('PATCH',$this->client->lastWrite['method']);
+        self::assertSame($body,$this->client->lastWrite['body']);
+
+        foreach ([
+            ['nfse'=>['webdav_password'=>'exposed-secret']],
+            ['nfse'=>['webdav_username'=>'someone']],
+            ['nfse'=>['webdav_url'=>'https://attacker.invalid']],
+            ['nfse'=>['webdav_path_template'=>'../../escape']],
+            ['nfse'=>['webdav_path_template'=>'/']],
+            ['nfse'=>['webdav_filename_template'=>'..']],
+            ['nfse'=>['webdav_filename_template'=>'../secret']],
+            ['nfse'=>['webdav_store_xml'=>'false']],
+            ['nfse'=>['webdav_store_pdf'=>1]],
+            ['nfse'=>['webdav_path_scope'=>'configured']],
+            ['nfse'=>['webdav_path_scope'=>'unexpected']],
+            ['nfse'=>['webdav_path_template'=>'{unknown_token}']],
+            ['nfse'=>['webdav_store_xml'=>false],'company_id'=>2],
+        ] as $invalid) {
+            try {
+                $this->prepare($route,'PATCH',[],$invalid);
+                self::fail('Unapproved WebDAV secret or path setting accepted');
+            } catch (RuntimeException) {
+                self::assertSame(1,$this->client->writes);
+            }
+        }
+
+        $configured=['nfse'=>[
+            'webdav_path_scope'=>'configured',
+            'webdav_path_template'=>'Dedicated/{cnpj}/{year}',
+        ]];
+        $plan=$this->prepare($route,'PATCH',[],$configured);
+        self::assertSame('completed',$this->approve($plan)['status']);
+
+        $plan=$this->prepare($route,'PATCH',[],['nfse'=>['webdav_store_xml'=>false]]);
+        $this->client->webDavTemplate='nfse/{cnpj}/changed';
+        try {
+            $this->approve($plan);
+            self::fail('Changed WebDAV archive policy was accepted after approval');
+        } catch (RuntimeException) {
+            self::assertSame(2,$this->client->writes);
         }
     }
 

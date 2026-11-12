@@ -47,6 +47,12 @@ final class NfseWriteCatalog
             'method'=>'PATCH', 'path'=>'/nfse/settings/email-footer',
             'permission'=>'update-nfse-settings',
         ],
+        // Only non-secret artifact policies; credential entry stays in the
+        // protected native browser flow. Never expose Vault/PFX via MCP.
+        'api.nfse.settings.artifacts.update' => [
+            'method'=>'PATCH', 'path'=>'/nfse/settings/artifacts',
+            'permission'=>'update-nfse-settings',
+        ],
         'api.nfse.invoices.email-preferences.store' => [
             'method'=>'POST', 'path'=>'/nfse/invoices/{invoice}/email-preferences',
             'permission'=>'update-sales-invoices',
@@ -187,6 +193,51 @@ final class NfseWriteCatalog
         if (!isset(self::ROUTES[$name]) || $body===[] || array_is_list($body)
             || array_key_exists('company_id',$body)) {
             throw new RuntimeException('Invalid NFS-e mutation body');
+        }
+        if ($name==='api.nfse.settings.artifacts.update') {
+            $this->only($body,['nfse']);
+            $values=$body['nfse']??null;
+            if (!is_array($values) || $values===[] || array_is_list($values)) {
+                throw new RuntimeException('Non-secret WebDAV policy values required');
+            }
+            $this->only($values,[
+                'webdav_path_template','webdav_filename_template','webdav_path_scope',
+                'webdav_store_xml','webdav_store_pdf',
+            ]);
+            foreach (['webdav_store_xml','webdav_store_pdf'] as $flag) {
+                if (array_key_exists($flag,$values) && !is_bool($values[$flag])) {
+                    throw new RuntimeException('WebDAV archive flag must be boolean');
+                }
+            }
+            if (array_key_exists('webdav_path_scope',$values)
+                && !in_array($values['webdav_path_scope'],['company','configured'],true)) {
+                throw new RuntimeException('Invalid WebDAV path isolation scope');
+            }
+            foreach (['webdav_path_template','webdav_filename_template'] as $templateField) {
+                if (!array_key_exists($templateField,$values)) continue;
+                $value=$values[$templateField];
+                if (!is_string($value) || strlen($value)<1 || strlen($value)>255
+                    || trim($value,'/ .')===''
+                    || preg_match('/^[a-zA-Z0-9_{}.\\/\\- ]+$/D',$value)!==1
+                    || str_contains($value,'..') || str_contains($value,'//')
+                    || ($templateField==='webdav_filename_template' && str_contains($value,'/'))) {
+                    throw new RuntimeException('Invalid WebDAV archive naming template');
+                }
+                $withoutTokens=preg_replace(
+                    '/\\{(?:cnpj|year|month|day|month_name|nfse_number|chave_acesso|customer_name)\\}/',
+                    '',$value,
+                );
+                if (!is_string($withoutTokens)
+                    || str_contains($withoutTokens,'{') || str_contains($withoutTokens,'}')) {
+                    throw new RuntimeException('Unrecognized WebDAV archive placeholder');
+                }
+            }
+            if (($values['webdav_path_scope']??null)==='configured'
+                && (!is_string($values['webdav_path_template']??null)
+                    || !str_contains($values['webdav_path_template'],'{cnpj}'))) {
+                throw new RuntimeException('Dedicated WebDAV scope requires an explicit issuer CNPJ path');
+            }
+            return;
         }
         if ($name==='api.nfse.settings.email-footer.update') {
             $this->only($body,['footer_message','footer_url']);
@@ -487,6 +538,7 @@ final class NfseWriteCatalog
         // independent approved state snapshot and native route permissions.
         $noIssuancePrerequisite=in_array($route,[
             'api.nfse.settings.email-footer.update',
+            'api.nfse.settings.artifacts.update',
             'api.nfse.invoices.email-preferences.store',
             'api.nfse.settings.category-issuance.store',
             'api.nfse.invoices.fiscal-decision.store',
@@ -510,7 +562,18 @@ final class NfseWriteCatalog
             }
             $snapshot['profile']=$profile;
         }
-        if ($route==='api.nfse.settings.email-footer.update') {
+        if ($route==='api.nfse.settings.artifacts.update') {
+            $current=$reader->read($creds,$company,[
+                'route'=>'api.nfse.settings.artifacts.show',
+            ])['response']['data']??null;
+            if (!is_array($current)
+                || !in_array($current['path_scope']??null,['company','configured'],true)) {
+                throw new RuntimeException('Current WebDAV archive policy unavailable');
+            }
+            // No mutation is prepared using a returned endpoint URL or secret.
+            // Changing archival semantics always requires a fresh approval.
+            $snapshot['webdav_artifact_policy']=$current;
+        } elseif ($route==='api.nfse.settings.email-footer.update') {
             $snapshot['email_footer']=$reader->read($creds,$company,[
                 'route'=>'api.nfse.settings.email-footer.show',
             ])['response'];

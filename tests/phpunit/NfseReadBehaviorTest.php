@@ -169,6 +169,7 @@ final class NfseReadBehaviorTest extends TestCase
             'username_configured'=>true,
             'password_configured'=>true,
             'path_template'=>'nfse/{cnpj}/{year}',
+            'path_scope'=>'company',
             'filename_template'=>'{chave_acesso}',
             'store_xml'=>true,
             'store_pdf'=>false,
@@ -178,9 +179,16 @@ final class NfseReadBehaviorTest extends TestCase
             'route'=>'api.nfse.settings.artifacts.show',
         ]);
         self::assertSame('dav.example.invalid',$result['response']['data']['host']);
+        self::assertSame('company',$result['response']['data']['path_scope']);
         self::assertTrue($result['response']['data']['password_configured']);
         self::assertArrayNotHasKey('webdav_password',$result['response']['data']);
         self::assertSame('/nfse/settings/artifacts',$api->calls[0]['path']);
+
+        $api->fiscal['data']['path_scope']='unreviewed';
+        $this->expectRejected(fn()=> (new ApiBrowser($api))->read($this->credentials(),1,[
+            'route'=>'api.nfse.settings.artifacts.show',
+        ]));
+        $api->fiscal['data']['path_scope']='company';
 
         $api->fiscal['data']['webdav_url']='https://user:password@dav.example.invalid/secret';
         $this->expectRejected(fn()=> (new ApiBrowser($api))->read($this->credentials(),1,[

@@ -88,10 +88,6 @@
     "reason": "Signed fiscal artifacts require protected authenticated binary download handling."
   },
   {
-    "route": "api.nfse.settings.artifacts.update",
-    "reason": "WebDAV destination and credentials require secured field handling and approval."
-  },
-  {
     "route": "api.nfse.settings.company-profiles.cleanup",
     "reason": "Fiscal profile cleanup is destructive and requires state-aware approval."
   },
