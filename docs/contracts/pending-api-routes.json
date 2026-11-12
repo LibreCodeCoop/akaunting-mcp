@@ -84,8 +84,16 @@
     "reason": "Tax evidence export returns a file and requires a protected binary transport."
   },
   {
+    "route": "api.nfse.invoices.emails.store",
+    "reason": "Email sending can trigger fiscal issuance via DocumentSending; MCP needs explicit recipient validation, first-POST protection and one-use fiscal approval before exposing this command."
+  },
+  {
     "route": "api.nfse.invoices.fiscal-decision.store",
     "reason": "Operator fiscal classification writes require a typed reason/evidence schema, state checks, and independent per-operation approval."
+  },
+  {
+    "route": "api.nfse.municipal-parameters.index",
+    "reason": "The official municipal parameter GET can persist advisory snapshots; it is not side-effect-free until the query/cache contract is separated and reviewed."
   },
   {
     "route": "api.nfse.receipts.artifacts.download",
