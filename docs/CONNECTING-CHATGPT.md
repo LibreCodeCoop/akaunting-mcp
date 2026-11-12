@@ -23,7 +23,7 @@ The [non-secret configuration example](../.env.example) illustrates the required
 
 The broker validates the Akaunting account against the selected company, stores the required credentials encrypted at rest, and issues short-lived MCP access tokens with a fixed resource audience. The MCP then checks the upstream user and company permissions for each requested business read. Read and write routes are restricted to reviewed native API patterns. Each write must be explicitly authorized by the user through ChatGPT's native MCP tool confirmation; the already-linked personal OAuth identity is rechecked by the server. The legacy issuer-host browser flow is optional. Do not trust a client that executes mutating tools without asking the user.
 
-A route appearing in the catalog does not imply that the connected user can access it. Cross-company or unverified response data must not be returned by the MCP. No account/permission changes or financial mutations are available.
+A route appearing in the catalog does not imply that the connected user can access it. Cross-company or unverified response data must not be returned by the MCP. Reviewed company-scoped financial and fiscal mutations are available only through a single-use approved proposal and an explicit host-confirmed write call; account/role permission changes, arbitrary paths, certificate/secret uploads and binary downloads are not enabled. If a ChatGPT client cannot enforce human confirmation for mutating tools, keep those tools disabled.
 
 ## Troubleshooting safely
 
