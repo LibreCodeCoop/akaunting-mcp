@@ -75,7 +75,7 @@ headers, OAuth discovery and client compatibility in the synthetic HTTP suite.
 
 ## NFS-e API parity and reviewed MCP boundaries
 
-The NFS-e module's #497 parity effort adds native JSON read contracts for
+The NFS-e module provides native JSON read contracts for
 fiscal dashboard data, company email footer, company-owned customer email
 preferences, IBGE UFs/municipalities and LC 116 catalog lookup. The MCP
 allows these **only** through the typed, ACL-preserving NfseReadCatalog, with
@@ -152,9 +152,10 @@ The selected native page still enforces its own session, CSRF and ACL.
 A handoff **does not perform or approve an API mutation**, transfer private
 bytes, or confer access solely because a link was generated.
 
-These seven browser handoffs remain **distinct from direct MCP route parity**
-in the audit until their security-specific transports and approvals are implemented.
-Do not count browser navigation as a successful JSON endpoint execution.
+These seven browser handoffs remain **distinct from direct MCP JSON execution**.
+They provide authenticated navigation to native application interfaces,
+not binary or secret transfer through the MCP. A generated browser link is
+not evidence that the underlying operation has been executed.
 
 Deploying a new NFS-e module version is a prerequisite for consuming these
 new endpoints; a reviewed catalog entry never establishes that a route is
