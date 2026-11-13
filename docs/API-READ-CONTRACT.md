@@ -5,7 +5,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 # API coverage and extension policy
 
 For a reproducible comparison of installed API routes against the reviewed MCP
-catalogs, see [API-to-MCP parity audit](API-PARITY.md). Unclassified route drift
+catalogs, see [API-to-MCP operation inventory](API-PARITY.md). Unclassified route drift
 fails CI; explicitly listed pending routes remain unavailable until their
 transport, input/output contracts and authorization tests are implemented.
 
